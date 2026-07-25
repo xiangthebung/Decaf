@@ -112,3 +112,23 @@ test("content script repairs host pages that replace extension state classes", (
   assert.doesNotMatch(contentJs, /\[class\*='notification' i\]/);
   assert.doesNotMatch(contentJs, /\[class\*='badge' i\]/);
 });
+
+test("YouTube Focus Lock gate offers intentional playback choices", () => {
+  assert.match(contentJs, /heading\.textContent = "Is this video educational\?"/);
+  assert.match(contentJs, /Yes — play normally/);
+  assert.match(contentJs, /Keep it less rewarding/);
+  assert.match(contentJs, /Keep it paused/);
+  assert.match(contentJs, /unaddictify-youtube-focus-kept-paused/);
+  assert.match(contentJs, /dataset\.frictionAvailable/);
+  assert.match(contentCss, /unaddictify-youtube-focus-actions/);
+  assert.match(contentCss, /unaddictify-youtube-focus-button-secondary/);
+  assert.match(contentCss, /unaddictify-youtube-focus-button-tertiary/);
+});
+
+test("opened-video treatment offers a non-Focus choice", () => {
+  assert.match(contentJs, /return youtubeOpenedVideoChoices\.has\(videoId\) \? "" : "opened"/);
+  assert.match(contentJs, /gateMode === "focus"/);
+  assert.match(contentJs, /youtubeOpenedVideoChoices\.set\(videoId, mode\)/);
+  assert.match(contentJs, /gate\.dataset\.gateMode = gateMode/);
+  assert.match(contentJs, /A quick check/);
+});

@@ -395,6 +395,7 @@
   let youtubeGate = null;
   let youtubeApprovedPlayer = null;
   let youtubeFocusApprovals = U.normalizeYouTubeFocusApprovals();
+  const youtubeOpenedVideoChoices = new Map();
   let pendingDocumentScan = false;
   const MAX_PENDING_ROOTS = 96;
   const ROOTS_PER_SCAN = 24;
@@ -430,14 +431,23 @@
     return currentSite === "youtube" && !isShortsPage() ? U.getYouTubeVideoId(location.href) : "";
   }
 
+  function getYouTubeGateMode(videoId = currentYouTubeVideoId()) {
+    if (!active || !videoId) return "";
+    if (U.isLocked(settings)) {
+      if (!settings.siteSettings.youtube.requireVideoApproval) return "";
+      return U.isYouTubeVideoApproved(settings, youtubeFocusApprovals, videoId) ? "" : "focus";
+    }
+    if (!settings.siteSettings.youtube.sabotageOpenedVideos) return "";
+    return youtubeOpenedVideoChoices.has(videoId) ? "" : "opened";
+  }
+
   function shouldGateYouTubeVideo(videoId = currentYouTubeVideoId()) {
-    return Boolean(
-      active &&
-      videoId &&
-      settings.siteSettings.youtube.requireVideoApproval &&
-      U.isLocked(settings) &&
-      !U.isYouTubeVideoApproved(settings, youtubeFocusApprovals, videoId)
-    );
+    return Boolean(getYouTubeGateMode(videoId));
+  }
+
+  function getYouTubePlaybackMode(videoId) {
+    if (U.isLocked(settings)) return U.getYouTubeFocusApprovalMode(youtubeFocusApprovals, videoId);
+    return youtubeOpenedVideoChoices.get(videoId) || "";
   }
 
   function formatVideoDuration(seconds) {
@@ -484,9 +494,13 @@
     document.documentElement.classList.toggle("unaddictify-youtube-video-approved", Boolean(player));
   }
 
-  function createYouTubeGate(player, videoId) {
+  function createYouTubeGate(player, videoId, gateMode) {
+    const frictionAvailable = Boolean(settings.siteSettings.youtube.sabotageOpenedVideos);
+    const focusGate = gateMode === "focus";
     const gate = document.createElement("div");
     gate.className = "unaddictify-youtube-focus-gate";
+    gate.dataset.frictionAvailable = String(frictionAvailable);
+    gate.dataset.gateMode = gateMode;
     gate.setAttribute("role", "dialog");
     gate.setAttribute("aria-modal", "true");
     gate.setAttribute("aria-labelledby", "unaddictify-youtube-gate-title");
@@ -497,11 +511,11 @@
 
     const eyebrow = document.createElement("p");
     eyebrow.className = "unaddictify-youtube-focus-eyebrow";
-    eyebrow.textContent = "Focus Lock";
+    eyebrow.textContent = focusGate ? "Focus check" : "A quick check";
 
     const heading = document.createElement("h2");
     heading.id = "unaddictify-youtube-gate-title";
-    heading.textContent = "This video is paused";
+    heading.textContent = "Is this video educational?";
 
     const details = getYouTubeVideoDetails(player);
     const title = document.createElement("p");
@@ -516,37 +530,76 @@
     const description = document.createElement("p");
     description.id = "unaddictify-youtube-gate-description";
     description.className = "unaddictify-youtube-focus-description";
-    description.textContent = "Approval applies only to this video and lasts until Focus Lock ends.";
+    description.setAttribute("aria-live", "polite");
+    description.textContent = focusGate
+      ? frictionAvailable
+        ? "If it is educational, let it play normally. Otherwise, keep your chosen friction in place."
+        : "Choose whether to play it normally or leave it paused. This choice applies only to this video until Focus Lock ends."
+      : frictionAvailable
+        ? "If it is educational, let it play normally. Otherwise, keep your chosen friction in place for this video."
+        : "Choose whether to play it normally or leave it paused for this video.";
 
-    const button = document.createElement("button");
-    button.className = "unaddictify-youtube-focus-button";
-    button.type = "button";
-    button.textContent = "Play this video";
-    button.addEventListener("click", async () => {
+    const actions = document.createElement("div");
+    actions.className = "unaddictify-youtube-focus-actions";
+    actions.setAttribute("role", "group");
+    actions.setAttribute("aria-label", "Choose how to watch this video");
+
+    const approve = async (mode, button) => {
       if (button.disabled) return;
-      button.disabled = true;
+      const buttons = [...actions.querySelectorAll(".unaddictify-youtube-focus-button")];
+      buttons.forEach((item) => { item.disabled = true; });
       button.textContent = "Opening…";
       const previous = youtubeFocusApprovals;
-      const next = U.addYouTubeFocusApproval(previous, settings.lockUntil, videoId);
-      youtubeFocusApprovals = next;
+      let next = null;
+      if (focusGate) {
+        next = U.addYouTubeFocusApproval(previous, settings.lockUntil, videoId, mode);
+        youtubeFocusApprovals = next;
+      } else {
+        youtubeOpenedVideoChoices.set(videoId, mode);
+      }
       syncYouTubeFocusGate();
       const playPromise = player.querySelector("video")?.play?.();
       playPromise?.catch?.(() => {});
+      if (!focusGate) return;
       try {
         await chrome.storage.local.set({ [U.YOUTUBE_FOCUS_APPROVALS_KEY]: next });
       } catch (_) {
         youtubeFocusApprovals = previous;
         syncYouTubeFocusGate();
-        const restoredButton = youtubeGate?.querySelector(".unaddictify-youtube-focus-button");
-        if (restoredButton) {
-          restoredButton.textContent = "Try again";
-          restoredButton.disabled = false;
-        }
-        return;
       }
-    });
+    };
 
-    sheet.append(eyebrow, heading, title, meta, description, button);
+    const createChoiceButton = (label, mode, style = "") => {
+      const button = document.createElement("button");
+      button.className = `unaddictify-youtube-focus-button${style ? ` ${style}` : ""}`;
+      button.type = "button";
+      button.textContent = label;
+      button.dataset.defaultLabel = label;
+      button.addEventListener("click", () => approve(mode, button));
+      return button;
+    };
+
+    actions.append(
+      createChoiceButton("Yes — play normally", "normal"),
+      ...(frictionAvailable
+        ? [createChoiceButton("Keep it less rewarding", "friction", "unaddictify-youtube-focus-button-secondary")]
+        : [])
+    );
+
+    const keepPausedButton = document.createElement("button");
+    keepPausedButton.className = "unaddictify-youtube-focus-button unaddictify-youtube-focus-button-tertiary";
+    keepPausedButton.type = "button";
+    keepPausedButton.textContent = "Keep it paused";
+    keepPausedButton.addEventListener("click", () => {
+      if (keepPausedButton.disabled) return;
+      keepPausedButton.disabled = true;
+      keepPausedButton.textContent = "Video will stay paused";
+      gate.classList.add("unaddictify-youtube-focus-kept-paused");
+      description.textContent = "The video will stay paused. Choose a viewing mode whenever you are ready.";
+    });
+    actions.append(keepPausedButton);
+
+    sheet.append(eyebrow, heading, title, meta, description, actions);
     gate.append(sheet);
     return gate;
   }
@@ -566,24 +619,27 @@
       return;
     }
 
-    const locked = U.isLocked(settings);
-    if (!locked || !settings.siteSettings.youtube.requireVideoApproval) {
+    const gateMode = getYouTubeGateMode(videoId);
+    if (!gateMode) {
       removeYouTubeGate();
-      setApprovedYouTubePlayer(settings.siteSettings.youtube.sabotageOpenedVideos ? null : player);
-      return;
-    }
-
-    if (!shouldGateYouTubeVideo(videoId)) {
-      removeYouTubeGate();
-      setApprovedYouTubePlayer(player);
+      const playbackMode = getYouTubePlaybackMode(videoId);
+      const restoreNormalPlayer = !settings.siteSettings.youtube.sabotageOpenedVideos || playbackMode === "normal";
+      setApprovedYouTubePlayer(restoreNormalPlayer ? player : null);
       return;
     }
 
     setApprovedYouTubePlayer();
     for (const video of player.querySelectorAll("video")) video.pause();
-    if (!youtubeGate || youtubeGate.parentElement !== player || youtubeGate.dataset.videoId !== videoId) {
+    const frictionAvailable = Boolean(settings.siteSettings.youtube.sabotageOpenedVideos);
+    if (
+      !youtubeGate ||
+      youtubeGate.parentElement !== player ||
+      youtubeGate.dataset.videoId !== videoId ||
+      youtubeGate.dataset.gateMode !== gateMode ||
+      youtubeGate.dataset.frictionAvailable !== String(frictionAvailable)
+    ) {
       removeYouTubeGate();
-      youtubeGate = createYouTubeGate(player, videoId);
+      youtubeGate = createYouTubeGate(player, videoId, gateMode);
       youtubeGate.dataset.videoId = videoId;
       player.append(youtubeGate);
       youtubeGate.querySelector(".unaddictify-youtube-focus-button")?.focus?.({ preventScroll: true });

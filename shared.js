@@ -172,33 +172,66 @@
 
   function normalizeYouTubeFocusApprovals(raw = {}) {
     const lockUntil = Math.max(0, Number(raw?.lockUntil) || 0);
-    const videoIds = [];
-    for (const value of Array.isArray(raw?.videoIds) ? raw.videoIds : []) {
-      const videoId = String(value || "").trim();
-      if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId) || videoIds.includes(videoId)) continue;
-      videoIds.push(videoId);
-      if (videoIds.length >= MAX_YOUTUBE_FOCUS_APPROVALS) break;
-    }
-    return { lockUntil, videoIds };
+    const hasPlaybackModes = Array.isArray(raw?.normalVideoIds) || Array.isArray(raw?.frictionVideoIds);
+    const entries = [];
+    const seen = new Set();
+    const collect = (values, mode) => {
+      for (const value of Array.isArray(values) ? values : []) {
+        const videoId = String(value || "").trim();
+        if (!/^[A-Za-z0-9_-]{6,20}$/.test(videoId) || seen.has(videoId)) continue;
+        seen.add(videoId);
+        entries.push({ videoId, mode });
+        if (entries.length >= MAX_YOUTUBE_FOCUS_APPROVALS) break;
+      }
+    };
+
+    // Approvals created before playback modes existed are normal approvals.
+    collect(hasPlaybackModes ? raw.normalVideoIds : raw.videoIds, "normal");
+    if (entries.length < MAX_YOUTUBE_FOCUS_APPROVALS) collect(raw.frictionVideoIds, "friction");
+
+    return {
+      lockUntil,
+      videoIds: entries.map(({ videoId }) => videoId),
+      normalVideoIds: entries.filter(({ mode }) => mode === "normal").map(({ videoId }) => videoId),
+      frictionVideoIds: entries.filter(({ mode }) => mode === "friction").map(({ videoId }) => videoId)
+    };
+  }
+
+  function getYouTubeFocusApprovalMode(approvals, videoId) {
+    const normalized = normalizeYouTubeFocusApprovals(approvals);
+    if (normalized.normalVideoIds.includes(videoId)) return "normal";
+    if (normalized.frictionVideoIds.includes(videoId)) return "friction";
+    return "";
   }
 
   function isYouTubeVideoApproved(settings, approvals, videoId, now = Date.now()) {
-    const normalized = normalizeYouTubeFocusApprovals(approvals);
     return Boolean(
       videoId &&
       isLocked(settings, now) &&
-      normalized.lockUntil === Number(settings?.lockUntil) &&
-      normalized.videoIds.includes(videoId)
+      normalizeYouTubeFocusApprovals(approvals).lockUntil === Number(settings?.lockUntil) &&
+      getYouTubeFocusApprovalMode(approvals, videoId)
     );
   }
 
-  function addYouTubeFocusApproval(approvals, lockUntil, videoId) {
+  function addYouTubeFocusApproval(approvals, lockUntil, videoId, mode = "normal") {
     const normalized = normalizeYouTubeFocusApprovals(approvals);
-    const nextIds = normalized.lockUntil === Number(lockUntil) ? normalized.videoIds : [];
-    if (/^[A-Za-z0-9_-]{6,20}$/.test(videoId) && !nextIds.includes(videoId)) nextIds.push(videoId);
+    const entries = normalized.lockUntil === Number(lockUntil)
+      ? normalized.videoIds.map((id) => ({
+        videoId: id,
+        mode: normalized.normalVideoIds.includes(id) ? "normal" : "friction"
+      }))
+      : [];
+    const validVideoId = /^[A-Za-z0-9_-]{6,20}$/.test(videoId);
+    const playbackMode = mode === "friction" ? "friction" : "normal";
+    const existingIndex = entries.findIndex(({ videoId: id }) => id === videoId);
+    if (existingIndex >= 0) entries.splice(existingIndex, 1);
+    if (validVideoId) entries.push({ videoId, mode: playbackMode });
+    const limited = entries.slice(-MAX_YOUTUBE_FOCUS_APPROVALS);
     return {
       lockUntil: Math.max(0, Number(lockUntil) || 0),
-      videoIds: nextIds.slice(-MAX_YOUTUBE_FOCUS_APPROVALS)
+      videoIds: limited.map(({ videoId: id }) => id),
+      normalVideoIds: limited.filter(({ mode: entryMode }) => entryMode === "normal").map(({ videoId: id }) => id),
+      frictionVideoIds: limited.filter(({ mode: entryMode }) => entryMode === "friction").map(({ videoId: id }) => id)
     };
   }
 
@@ -404,6 +437,7 @@
     isActiveForSite,
     isWeakeningChange,
     normalizeYouTubeFocusApprovals,
+    getYouTubeFocusApprovalMode,
     isYouTubeVideoApproved,
     addYouTubeFocusApproval,
     formatUntil,

@@ -266,10 +266,12 @@
     $("#lock-badge").classList.toggle("locked", locked);
     $("#lock-description").textContent = locked
       ? `${U.formatUntil(savedSettings.lockUntil)} Focus Lock is active. blokamine cannot be disabled or weakened until it expires. You can still add friction.`
-      : "Keep your current settings in place until a chosen time. YouTube videos can be approved with one click in the player.";
+      : "Keep your current settings in place until a chosen time. During a lock, YouTube can ask whether to play normally, use your configured friction, or stay paused. The ten-minute break follows the cooldown below.";
     $("#bypass-cooldown").value = String(draftSettings.bypassCooldownHours);
-    // Configuration remains editable while locked; only activation is disabled.
-    $("#lock-duration").disabled = false;
+    // Lock duration only applies when activating a new lock, so avoid making
+    // an already-active lock look editable.
+    $("#lock-duration").disabled = locked;
+    $("#lock-duration").title = locked ? "Focus Lock is already active." : "";
     $("#bypass-cooldown").disabled = false;
     $("#lock-button").textContent = locked ? "Focus lock active" : "Activate focus lock";
     $("#lock-button").disabled = locked || pendingDuration === 0;
@@ -351,7 +353,7 @@
       next.enabled = true;
       const confirmed = window.confirm(
         `Activate Focus Lock? Protected settings cannot be weakened until it expires.${
-          youtubeApprovalEnabled ? " On YouTube, each video will pause with a one-click option to play it." : ""
+          youtubeApprovalEnabled ? " On YouTube, each video will ask whether to play normally, use your configured friction, or stay paused." : ""
         }`
       );
       if (!confirmed) return false;

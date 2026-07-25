@@ -15,7 +15,7 @@ The settings page is organized around a simple core experience, optional stronge
 
 There is no feed interception, artificial loading boundary, or scroll manipulation. Some optional site controls reduce discovery surfaces, while dynamic content is styled after the host site inserts it without delaying navigation or media requests.
 
-Outside Focus Lock, an opened long-form YouTube video stays normal by default. You can enable **Make opened videos less rewarding** to apply the same media treatment to the active player. Search results, thumbnails, recommendations, and Shorts keep their configured visual treatment. During Focus Lock, regular YouTube videos can pause behind an inline approval sheet; **Play this video** approves only that video until the current lock ends.
+Outside Focus Lock, an opened long-form YouTube video stays normal by default. You can enable **Make opened videos less rewarding** to apply the same media treatment to the active player. Search results, thumbnails, recommendations, and Shorts keep their configured visual treatment. When that option is enabled, opening a long-form video pauses behind a quick reflection step: choose normal playback for educational viewing, keep your configured friction, or leave the video paused. Focus Lock uses the same choices and scopes them to the current lock. A non-Focus choice lasts for that video during the current page session.
 
 The extension popup provides Focus Lock and a one-time ten-minute break. A break requires entering the displayed six-character code, and the break cooldown is configured in Settings.
 

@@ -209,3 +209,19 @@ test("YouTube approval storage removes invalid and duplicate video IDs", () => {
   assert.equal(normalized.lockUntil, 1234);
   assert.deepEqual([...normalized.videoIds], ["dQw4w9WgXcQ", "another_123"]);
 });
+
+test("YouTube approvals retain normal and friction playback modes", () => {
+  const now = Date.now();
+  const settings = U.mergeSettings({ lockUntil: now + 60_000 });
+  const normal = U.addYouTubeFocusApproval({}, settings.lockUntil, "dQw4w9WgXcQ", "normal");
+  const mixed = U.addYouTubeFocusApproval(normal, settings.lockUntil, "another_123", "friction");
+
+  assert.equal(U.getYouTubeFocusApprovalMode(mixed, "dQw4w9WgXcQ"), "normal");
+  assert.equal(U.getYouTubeFocusApprovalMode(mixed, "another_123"), "friction");
+  assert.equal(U.isYouTubeVideoApproved(settings, mixed, "another_123", now), true);
+  assert.deepEqual([...mixed.normalVideoIds], ["dQw4w9WgXcQ"]);
+  assert.deepEqual([...mixed.frictionVideoIds], ["another_123"]);
+
+  const legacy = U.normalizeYouTubeFocusApprovals({ lockUntil: settings.lockUntil, videoIds: ["dQw4w9WgXcQ"] });
+  assert.equal(U.getYouTubeFocusApprovalMode(legacy, "dQw4w9WgXcQ"), "normal");
+});

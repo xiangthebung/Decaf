@@ -15,9 +15,9 @@
           <p class="header-copy">Make scrolling less interesting while keeping useful content easy to reach.</p>
         </div>
         <div class="header-actions">
-          <div id="focus-lock-header" class="mode-status active" role="status" aria-live="polite">
+          <div id="focus-lock-header" class="mode-status active" role="region" aria-labelledby="focus-lock-header-title">
             <span id="focus-lock-header-icon" class="mode-status-icon" aria-hidden="true">✓</span>
-            <span><strong id="focus-lock-header-title">blokamine active</strong><strong id="focus-lock-header-countdown" class="mode-status-countdown"></strong><small id="focus-lock-header-copy">Focus Lock can protect these settings.</small></span>
+            <span><strong id="focus-lock-header-title">blokamine active</strong><strong id="focus-lock-header-countdown" class="mode-status-countdown" aria-live="off"></strong><small id="focus-lock-header-copy">Focus Lock can protect these settings.</small></span>
           </div>
           <label class="switch-label">
             <span>Enable blokamine</span>
@@ -38,7 +38,7 @@
 
       <section class="card lock-card">
         <div class="card-heading"><div><p class="eyebrow">Make it stick</p><h2>Focus Lock</h2></div><span id="lock-badge" class="badge">Unlocked</span></div>
-        <p id="lock-description" class="muted">Keep your current settings in place until a chosen time. You can still add friction, but protected settings cannot be weakened.</p>
+        <p id="lock-description" class="muted">Keep your current settings in place until a chosen time. During a lock, YouTube can ask whether to play normally, use your configured friction, or stay paused. The ten-minute break follows the cooldown below.</p>
         <div class="lock-controls">
           <label>Lock for
             <select id="lock-duration" aria-label="Lock duration">
@@ -126,8 +126,8 @@
             <summary>YouTube <span class="summary-mark" aria-hidden="true">+</span></summary>
             <label class="setting-row"><span>Hide Shorts tab</span><input data-site-setting="youtube.hideShortsTab" type="checkbox"><span class="check" aria-hidden="true"></span></label>
             <label class="setting-row"><span>Hide comments</span><input data-site-setting="youtube.hideComments" type="checkbox"><span class="check" aria-hidden="true"></span></label>
-            <label class="setting-row"><span class="setting-copy"><strong>Make opened videos less rewarding</strong><small>Apply your media treatment to the active long-form video too.</small></span><input data-site-setting="youtube.sabotageOpenedVideos" type="checkbox"><span class="check" aria-hidden="true"></span></label>
-            <label class="setting-row"><span>Ask before playing during Focus Lock</span><input data-site-setting="youtube.requireVideoApproval" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span class="setting-copy"><strong>Make opened videos less rewarding</strong><small>Apply your media treatment to the active long-form video too. When opening a video, you can choose normal playback for educational viewing; Focus Lock adds the same choice to every video.</small></span><input data-site-setting="youtube.sabotageOpenedVideos" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span class="setting-copy"><strong>Ask how to watch during Focus Lock</strong><small>Choose normal playback, your configured friction, or keep the video paused.</small></span><input data-site-setting="youtube.requireVideoApproval" type="checkbox"><span class="check" aria-hidden="true"></span></label>
           </details>
           <details class="site-panel" data-site-panel="reddit">
             <summary>Reddit <span class="summary-mark" aria-hidden="true">+</span></summary>

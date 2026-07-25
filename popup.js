@@ -98,7 +98,13 @@
     $("#site-card").classList.toggle("hidden", !hasSite);
     $("#empty-site").classList.toggle("hidden", hasSite);
     $("#current-site").textContent = hasSite ? U.SITE_LABELS[currentSite] : "";
-    $("#site-state").textContent = !hasSite ? "" : bypassed ? "This site is open for your break." : active ? "These changes are active here." : "blokamine is off on this site.";
+    $("#site-state").textContent = !hasSite
+      ? ""
+      : bypassed
+        ? `This site is open for your break (${formatRemaining(settings.bypassUntil)}).`
+        : active
+          ? "These changes are active here."
+          : "blokamine is off on this site.";
     const siteBadge = $("#site-badge");
     siteBadge.textContent = bypassed ? "Break" : active ? "On" : "Off";
     siteBadge.classList.toggle("active", active && !bypassed);
@@ -147,7 +153,7 @@
 
     $("#focus-card").classList.toggle("hidden", locked);
     $("#lock-copy").textContent = settings.sites.youtube && settings.siteSettings.youtube.requireVideoApproval
-      ? "Your current friction settings will stay in place. YouTube videos will ask before playing."
+      ? "Your current friction settings will stay in place. YouTube will ask how you want to watch each video."
       : "Your current friction settings will stay in place until the lock ends.";
     if (!$("#lock-duration").value) $("#lock-duration").value = String(U.DEFAULT_LOCK_DURATION_HOURS);
     $("#lock-duration").disabled = false;
@@ -160,9 +166,10 @@
     $("#settings-button").textContent = locked ? "View protection details" : "Open Settings";
     const codeRow = $("#break-code-row");
     codeRow.classList.toggle("hidden", !locked || bypassed || !available);
+    $("#break-code-input").disabled = !locked || bypassed || !available || !currentSite || !active;
     if (bypassed) {
       $("#pass-title").textContent = "Break active";
-      $("#pass-copy").textContent = "This site is open for 10 minutes.";
+      $("#pass-copy").textContent = `This site is open for ${formatRemaining(settings.bypassUntil)}.`;
       $("#pass-code-status").textContent = "";
     } else if (!available) {
       $("#pass-title").textContent = "Break cooling down";
@@ -179,7 +186,8 @@
     } else {
       $("#pass-title").textContent = "Unlock this site for 10 minutes";
       $("#pass-copy").textContent = "Type or paste the 6-character code to open this site for 10 minutes.";
-      $("#pass-code-status").textContent = "The break cooldown is configured in Settings.";
+      const cooldownHours = Number(settings.bypassCooldownHours);
+      $("#pass-code-status").textContent = `The break cooldown is ${cooldownHours} hour${cooldownHours === 1 ? "" : "s"}.`;
     }
     updateBreakButton();
   }
@@ -241,7 +249,7 @@
     const youtubeApprovalEnabled = settings.sites.youtube && settings.siteSettings.youtube.requireVideoApproval;
     const confirmed = window.confirm(
       `Activate Focus Lock? Protected settings cannot be weakened until it expires.${
-        youtubeApprovalEnabled ? " On YouTube, each video will pause with a one-click option to play it." : ""
+        youtubeApprovalEnabled ? " On YouTube, each video will ask whether to play normally, use your configured friction, or stay paused." : ""
       }`
     );
     if (!confirmed) return;
