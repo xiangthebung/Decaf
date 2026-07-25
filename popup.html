@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>blokamine</title>
+    <link rel="stylesheet" href="popup.css">
+  </head>
+  <body>
+    <main class="popup-shell">
+      <header class="popup-header">
+        <div>
+          <p class="eyebrow">Less rewarding by design</p>
+          <h1>blokamine</h1>
+        </div>
+        <label id="global-toggle-row" class="popup-switch">
+          <span>Enable</span>
+          <input id="global-enabled" type="checkbox" aria-label="Enable blokamine">
+          <span class="popup-switch-track" aria-hidden="true"></span>
+          <span id="global-enabled-state" class="popup-switch-state">On</span>
+        </label>
+      </header>
+
+      <section id="focus-lock-banner" class="focus-lock-banner hidden" role="status" aria-live="polite">
+        <span class="focus-lock-icon" aria-hidden="true">🔒</span>
+        <div><strong>Focus Lock active</strong><strong id="focus-lock-countdown" class="focus-lock-countdown">—</strong><span id="focus-lock-banner-copy" class="muted">Your protections are active.</span></div>
+      </section>
+
+      <section id="priority-card" class="priority-card hidden" aria-label="Break status">
+        <div id="break-status" class="priority-row hidden"><span>Break</span><strong id="break-time">—</strong></div>
+      </section>
+
+      <section id="site-card" class="site-card hidden" aria-label="Current site">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Current site</p>
+            <h2 id="current-site"></h2>
+          </div>
+          <span id="site-badge" class="badge">Off</span>
+        </div>
+        <p id="site-state" class="muted"></p>
+        <div id="site-activation" class="site-activation hidden">
+          <div>
+            <strong id="site-activation-title">Turn on for this site</strong>
+            <span id="site-activation-copy" class="muted">Use blokamine here with the recommended settings.</span>
+          </div>
+          <button id="site-activation-button" class="primary-button" type="button">Turn on here</button>
+        </div>
+      </section>
+
+      <p id="empty-site" class="empty-site hidden">Open a supported site to see its current settings here.</p>
+
+      <section id="focus-card" class="focus-card">
+        <div class="section-heading">
+          <div>
+            <p class="eyebrow">Commit for a while</p>
+            <h2>Focus Lock</h2>
+          </div>
+        </div>
+        <p id="lock-copy" class="muted">Your current friction settings will stay in place until the lock ends.</p>
+        <div class="focus-controls">
+          <label>Lock for
+            <select id="lock-duration" aria-label="Lock duration">
+              <option value="0">Choose duration</option>
+              <option value="24" selected>24 hours</option>
+              <option value="168">7 days</option>
+              <option value="720">30 days</option>
+            </select>
+          </label>
+          <button id="lock-button" class="primary-button" type="button">Start Focus Lock</button>
+        </div>
+      </section>
+
+      <section id="pass-section" class="pass-card hidden">
+        <div class="pass-heading">
+          <p class="eyebrow">Need a short break?</p>
+          <strong id="pass-title">Unlock this site for 10 minutes</strong>
+          <span id="pass-copy" class="muted">Type or paste the 6-character code to open this site for 10 minutes.</span>
+        </div>
+        <div id="break-code-row" class="break-code-row">
+          <div class="break-code-display" aria-label="Break code">
+            <span class="muted">Break code</span>
+            <strong id="break-code">—</strong>
+          </div>
+          <input id="break-code-input" type="text" inputmode="text" autocomplete="off" autocapitalize="characters" spellcheck="false" maxlength="6" aria-label="Type the break code" aria-describedby="pass-code-status">
+          <button id="pass-button" class="break-button" type="button">Open 10-minute break</button>
+        </div>
+        <span id="pass-code-status" class="muted"></span>
+      </section>
+
+      <div id="message" class="message" role="status" aria-live="polite"></div>
+      <button id="settings-button" class="secondary-button" type="button">Open Settings</button>
+    </main>
+    <script src="shared.js"></script>
+    <script src="popup.js"></script>
+  </body>
+</html>

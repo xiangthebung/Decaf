@@ -1,0 +1,214 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>blokamine settings</title>
+    <link rel="stylesheet" href="options.css">
+  </head>
+  <body>
+    <main class="page-shell">
+      <header class="page-header">
+        <div>
+          <p class="eyebrow">Less rewarding by design</p>
+          <h1>blokamine</h1>
+          <p class="header-copy">Make scrolling less interesting while keeping useful content easy to reach.</p>
+        </div>
+        <div class="header-actions">
+          <div id="focus-lock-header" class="mode-status active" role="status" aria-live="polite">
+            <span id="focus-lock-header-icon" class="mode-status-icon" aria-hidden="true">✓</span>
+            <span><strong id="focus-lock-header-title">blokamine active</strong><strong id="focus-lock-header-countdown" class="mode-status-countdown"></strong><small id="focus-lock-header-copy">Focus Lock can protect these settings.</small></span>
+          </div>
+          <label class="switch-label">
+            <span>Enable blokamine</span>
+            <input id="global-enabled" type="checkbox" aria-label="Enable blokamine">
+            <span class="switch" aria-hidden="true"></span>
+            <span id="global-enabled-state" class="switch-state">On</span>
+          </label>
+        </div>
+      </header>
+
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+      <section class="hero-card">
+        <p class="eyebrow">The default experience</p>
+        <h2>Less color, fewer numbers, less pull.</h2>
+        <p class="muted">blokamine softens the cues that keep feeds feeling rewarding. It does not block search, navigation, or intentional viewing.</p>
+      </section>
+
+      <section class="card lock-card">
+        <div class="card-heading"><div><p class="eyebrow">Make it stick</p><h2>Focus Lock</h2></div><span id="lock-badge" class="badge">Unlocked</span></div>
+        <p id="lock-description" class="muted">Keep your current settings in place until a chosen time. You can still add friction, but protected settings cannot be weakened.</p>
+        <div class="lock-controls">
+          <label>Lock for
+            <select id="lock-duration" aria-label="Lock duration">
+              <option value="0">Choose duration</option>
+              <option value="24" selected>24 hours</option>
+              <option value="168">7 days</option>
+              <option value="720">30 days</option>
+            </select>
+          </label>
+          <label>Break cooldown
+            <select id="bypass-cooldown" aria-label="Break cooldown">
+              <option value="1">1 hour</option>
+              <option value="2" selected>2 hours</option>
+              <option value="5">5 hours</option>
+              <option value="24">24 hours</option>
+            </select>
+          </label>
+          <button id="lock-button" class="secondary-button" type="button">Activate Focus Lock</button>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="card-heading">
+          <div>
+            <h2>Core experience</h2>
+            <p class="muted">These are the simple changes most people need.</p>
+          </div>
+          <span class="badge recommended">Recommended</span>
+        </div>
+        <label class="range-row" for="monochrome">
+          <span><span>Desaturate media</span><output id="monochrome-value" for="monochrome">75%</output></span>
+          <input id="monochrome" data-feature="monochrome" type="range" min="0" max="100" step="5" value="75">
+        </label>
+        <label class="setting-row"><span class="setting-copy"><strong>Hide likes, views &amp; follower counts</strong><small>Remove the numbers that make scrolling feel rewarding.</small></span><input data-feature="hideEngagementCounts" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+        <label class="setting-row"><span class="setting-copy"><strong>Hide notification badges</strong><small>Keep the notification button, but remove its attention-grabbing count.</small></span><input data-feature="hideNotificationBadges" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+      </section>
+
+      <details class="card advanced-card">
+        <summary><span><strong>Stronger friction</strong><small>Optional visual interruptions</small></span><span class="summary-mark" aria-hidden="true">+</span></summary>
+        <div class="advanced-content">
+          <label class="setting-row"><span>Blur thumbnails</span><input data-feature="blurThumbnails" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          <label class="setting-row"><span>Turn media upside down</span><input data-feature="upsideDownMedia" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          <label class="setting-row"><span>Remove feed media</span><input data-feature="stripMedia" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          <p class="muted note">Opened long-form YouTube videos stay normal by default. Change that in YouTube settings below.</p>
+        </div>
+      </details>
+
+      <details class="card site-details">
+        <summary><span><strong>Where it applies</strong><small id="site-coverage-summary">Social sites</small></span><span class="summary-mark" aria-hidden="true">+</span></summary>
+        <div class="site-panels">
+          <p class="section-intro">Choose the sites where blokamine should run. Work and messaging sites are off by default so useful tasks stay predictable.</p>
+          <h3>Social &amp; entertainment</h3>
+          <div class="site-list">
+            <label class="setting-row"><span>Instagram</span><input data-site="instagram" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Reddit</span><input data-site="reddit" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>YouTube</span><input data-site="youtube" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>TikTok</span><input data-site="tiktok" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Twitch</span><input data-site="twitch" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>X</span><input data-site="x" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Facebook</span><input data-site="facebook" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Pinterest</span><input data-site="pinterest" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Threads</span><input data-site="threads" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Snapchat</span><input data-site="snapchat" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </div>
+          <h3>Work &amp; messaging</h3>
+          <div class="site-list">
+            <label class="setting-row"><span>Discord</span><input data-site="discord" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Google Search</span><input data-site="google" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>LinkedIn</span><input data-site="linkedin" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>WhatsApp</span><input data-site="whatsapp" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Messenger</span><input data-site="messenger" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </div>
+        </div>
+      </details>
+
+      <details class="card site-details">
+        <summary><span><strong>Site-specific controls</strong><small>Optional controls for individual sites</small></span><span class="summary-mark" aria-hidden="true">+</span></summary>
+        <div class="site-panels">
+          <details class="site-panel" data-site-panel="instagram">
+            <summary>Instagram <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Reels</span><input data-site-setting="instagram.hideReels" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide comments</span><input data-site-setting="instagram.hideComments" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="youtube">
+            <summary>YouTube <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Shorts tab</span><input data-site-setting="youtube.hideShortsTab" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide comments</span><input data-site-setting="youtube.hideComments" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span class="setting-copy"><strong>Make opened videos less rewarding</strong><small>Apply your media treatment to the active long-form video too.</small></span><input data-site-setting="youtube.sabotageOpenedVideos" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Ask before playing during Focus Lock</span><input data-site-setting="youtube.requireVideoApproval" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="reddit">
+            <summary>Reddit <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide comments</span><input data-site-setting="reddit.hideComments" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="discord">
+            <summary>Discord <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span class="setting-copy"><strong>Hide attached media</strong><small>Hide images and embeds inside messages.</small></span><input data-site-setting="discord.hideMedia" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="tiktok">
+            <summary>TikTok <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide LIVE tab</span><input data-site-setting="tiktok.hideLiveTab" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Shop tab</span><input data-site-setting="tiktok.hideShopTab" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide comments</span><input data-site-setting="tiktok.hideComments" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="twitch">
+            <summary>Twitch <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide discovery rails</span><input data-site-setting="twitch.hideDiscovery" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Clips rails</span><input data-site-setting="twitch.hideClips" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide chat</span><input data-site-setting="twitch.hideChat" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="x">
+            <summary>X <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Explore</span><input data-site-setting="x.hideExplore" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide suggested posts</span><input data-site-setting="x.hideSuggestedPosts" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide For You tab</span><input data-site-setting="x.hideForYouTab" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="facebook">
+            <summary>Facebook <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Reels</span><input data-site-setting="facebook.hideReels" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Watch</span><input data-site-setting="facebook.hideWatch" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Stories</span><input data-site-setting="facebook.hideStories" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide suggested posts</span><input data-site-setting="facebook.hideSuggestedPosts" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="google">
+            <summary>Google Search <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Doodles</span><input data-site-setting="google.hideDoodles" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide trending searches</span><input data-site-setting="google.hideTrendingSearches" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Discover panels</span><input data-site-setting="google.hideDiscover" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide news panels</span><input data-site-setting="google.hideNewsPanels" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="pinterest">
+            <summary>Pinterest <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide recommendations</span><input data-site-setting="pinterest.hideRecommendations" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide related pins</span><input data-site-setting="pinterest.hideRelatedPins" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide save counts</span><input data-site-setting="pinterest.hideSaveCounts" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="linkedin">
+            <summary>LinkedIn <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <p class="muted site-note">LinkedIn uses the global media and notification controls above.</p>
+          </details>
+          <details class="site-panel" data-site-panel="threads">
+            <summary>Threads <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide For You tab</span><input data-site-setting="threads.hideForYouTab" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide suggested posts</span><input data-site-setting="threads.hideSuggestedPosts" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="snapchat">
+            <summary>Snapchat <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Spotlight</span><input data-site-setting="snapchat.hideSpotlight" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Discover</span><input data-site-setting="snapchat.hideDiscover" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Stories</span><input data-site-setting="snapchat.hideStories" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="whatsapp">
+            <summary>WhatsApp <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Status / Updates</span><input data-site-setting="whatsapp.hideStatus" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide Channels</span><input data-site-setting="whatsapp.hideChannels" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+          <details class="site-panel" data-site-panel="messenger">
+            <summary>Messenger <span class="summary-mark" aria-hidden="true">+</span></summary>
+            <label class="setting-row"><span>Hide Stories</span><input data-site-setting="messenger.hideStories" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+            <label class="setting-row"><span>Hide suggested content</span><input data-site-setting="messenger.hideSuggestedContent" type="checkbox"><span class="check" aria-hidden="true"></span></label>
+          </details>
+        </div>
+      </details>
+
+      <section class="save-card">
+        <p id="save-warning" class="save-warning" role="status" aria-live="polite"></p>
+        <div class="save-row"><span id="save-state">All changes saved</span><button id="save-button" class="primary-button" type="button" disabled>Save changes</button></div>
+      </section>
+    </main>
+    <script src="shared.js"></script>
+    <script src="options.js"></script>
+  </body>
+</html>

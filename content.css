@@ -1,0 +1,373 @@
+/* The host site's fonts, layout, controls, navigation, and scrolling remain untouched. */
+
+/* Settings are read asynchronously. The pending state is intentionally
+   neutral so users never see a default-sabotage flash before their settings
+   are available. */
+
+html.unaddictify-active.unaddictify-monochrome .unaddictify-media,
+html.unaddictify-active.unaddictify-monochrome .unaddictify-media-surface {
+  filter: grayscale(var(--unaddictify-monochrome)) !important;
+}
+
+/* CSS covers common cards immediately; the content script adds classes to
+   less predictable media after the host has finished its own render. */
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-instagram article img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-instagram article video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit article img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit article video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit shreddit-post img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit shreddit-post video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-rich-item-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-rich-item-renderer video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-video-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-video-renderer video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-compact-video-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-compact-video-renderer video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-item-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-video-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-shorts img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] video {
+  filter: grayscale(var(--unaddictify-monochrome)) !important;
+}
+
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="attachment" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="attachment" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="visualMedia" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="visualMedia" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="imageWrapper" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="imageWrapper" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="embedMedia" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="embedMedia" i] video {
+  filter: grayscale(var(--unaddictify-monochrome)) !important;
+}
+
+/* LinkedIn's feed markup changes often, but its post media consistently uses
+   these feed wrappers or LinkedIn-hosted media URLs. Keep a direct fallback in
+   addition to the classes added by the content script. */
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin .feed-shared-update-v2 img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin .feed-shared-update-v2 video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="feed-shared" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="feed-shared" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] video,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin img[src*="licdn.com" i],
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin img[srcset*="licdn.com" i],
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin img[src*="linkedin.com/dms/image" i] {
+  filter: grayscale(var(--unaddictify-monochrome)) !important;
+}
+
+html.unaddictify-active.unaddictify-upside-down-media .unaddictify-media,
+html.unaddictify-active.unaddictify-upside-down-media .unaddictify-media-surface {
+  transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-instagram article img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-instagram article video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit article img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit article video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit shreddit-post img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit shreddit-post video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-rich-item-renderer img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-rich-item-renderer video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-video-renderer img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-video-renderer video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-item-renderer img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-video-renderer img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-shorts img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] video {
+  transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="attachment" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="attachment" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="visualMedia" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="visualMedia" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="imageWrapper" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="imageWrapper" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="embedMedia" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="embedMedia" i] video {
+  transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin .feed-shared-update-v2 img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin .feed-shared-update-v2 video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="feed-shared" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="feed-shared" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] video,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin img[src*="licdn.com" i],
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin img[srcset*="licdn.com" i],
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin img[src*="linkedin.com/dms/image" i] {
+  transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+/* YouTube's player poster is a background surface rather than an <img>. */
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube .ytp-cued-thumbnail-overlay-image,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube .ytp-thumbnail-overlay-image {
+  filter: grayscale(var(--unaddictify-monochrome)) !important;
+}
+
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube .ytp-cued-thumbnail-overlay-image,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube .ytp-thumbnail-overlay-image {
+  transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube a[href*="/shorts/"] img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-item-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-video-renderer img,
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-shorts img {
+  filter: grayscale(var(--unaddictify-monochrome)) !important;
+}
+
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube a[href*="/shorts/"] img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-item-renderer img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-video-renderer img,
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-shorts img {
+  transform: rotate(180deg) !important;
+  transform-origin: center center !important;
+}
+
+html.unaddictify-active.unaddictify-blur-thumbnails .unaddictify-thumbnail {
+  filter: grayscale(var(--unaddictify-monochrome)) blur(4px) !important;
+}
+
+/* Remove only content media that the script has identified. Page chrome,
+   avatars, logos, and controls remain available. */
+html.unaddictify-active.unaddictify-strip-media .unaddictify-media,
+html.unaddictify-active.unaddictify-strip-media .unaddictify-media-surface {
+  display: none !important;
+}
+
+/* An approved YouTube video is restored without reopening nearby recommendations. */
+html.unaddictify-active.unaddictify-site-youtube #movie_player.unaddictify-approved-player video {
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  filter: none !important;
+  transform: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube #movie_player.unaddictify-approved-player .ytp-cued-thumbnail-overlay-image,
+html.unaddictify-active.unaddictify-site-youtube #movie_player.unaddictify-approved-player .ytp-thumbnail-overlay-image {
+  filter: none !important;
+  transform: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate {
+  position: absolute !important;
+  inset: 0 !important;
+  z-index: 10000 !important;
+  display: grid !important;
+  place-items: center !important;
+  box-sizing: border-box !important;
+  padding: 28px !important;
+  overflow: auto !important;
+  background: rgba(16, 18, 17, .94) !important;
+  color: #f7f8f6 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  text-align: left !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate *,
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate *::before,
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate *::after {
+  box-sizing: border-box !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-sheet {
+  width: min(440px, 100%) !important;
+  margin: auto !important;
+  color: inherit !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-eyebrow {
+  margin: 0 0 10px !important;
+  color: #aeb8b0 !important;
+  font: 700 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  letter-spacing: .08em !important;
+  text-transform: uppercase !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-sheet h2 {
+  margin: 0 !important;
+  color: #ffffff !important;
+  font: 700 clamp(22px, 4vw, 30px)/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  letter-spacing: -.02em !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-title {
+  margin: 22px 0 0 !important;
+  color: #ffffff !important;
+  font: 600 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-meta,
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-description {
+  margin: 6px 0 0 !important;
+  color: #b8c0ba !important;
+  font: 400 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-description {
+  margin-top: 18px !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button {
+  min-width: 170px !important;
+  min-height: 44px !important;
+  margin: 24px 0 0 !important;
+  padding: 10px 18px !important;
+  border: 0 !important;
+  border-radius: 10px !important;
+  background: #f4f6f3 !important;
+  color: #182019 !important;
+  box-shadow: none !important;
+  cursor: pointer !important;
+  font: 700 14px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button:hover {
+  background: #ffffff !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button:focus-visible {
+  outline: 3px solid #a9c9ae !important;
+  outline-offset: 3px !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button:disabled {
+  cursor: default !important;
+  opacity: .7 !important;
+}
+
+@media (max-width: 560px), (max-height: 420px) {
+  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate {
+    padding: 18px !important;
+  }
+
+  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-title {
+    margin-top: 14px !important;
+  }
+
+  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-description {
+    margin-top: 12px !important;
+  }
+
+  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button {
+    min-height: 40px !important;
+    margin-top: 16px !important;
+  }
+}
+
+html.unaddictify-active.unaddictify-hide-notification-badges .unaddictify-notification-badge {
+  display: none !important;
+}
+
+html.unaddictify-active .unaddictify-hidden-tab,
+html.unaddictify-active .unaddictify-hidden-site-item,
+html.unaddictify-active .unaddictify-hidden-comments,
+html.unaddictify-active .unaddictify-site-count {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-instagram-hide-reels a[href='/reels'],
+html.unaddictify-active.unaddictify-instagram-hide-reels a[href='/reels/'],
+html.unaddictify-active.unaddictify-instagram-hide-reels a[href*='/reels/'] {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-youtube.unaddictify-youtube-hide-comments ytd-comments,
+html.unaddictify-active.unaddictify-site-youtube.unaddictify-youtube-hide-comments #comments {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="attachment" i] img,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="attachment" i] video,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="visualMedia" i] img,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="visualMedia" i] video,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] img,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] video,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="embedMedia" i] img,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="embedMedia" i] video,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media embed,
+html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media iframe {
+  display: none !important;
+}
+
+/* Site-specific discovery cues. These selectors only remove optional
+   navigation or recommendation surfaces; the host page keeps its player,
+   search, scrolling, and primary controls. */
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab a[href="/live"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab a[href="/live/"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab [data-e2e="nav-live"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab [data-e2e="nav-live-link"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab a[href="/shop"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab a[href="/shop/"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab [data-e2e="nav-shop"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab [data-e2e="nav-shop-link"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-comments [data-e2e="comment-list"],
+html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-comments [data-e2e="comment-container"] {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-discovery [data-a-target="recommendations"],
+html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-discovery [data-a-target="recommended-channels"],
+html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-clips [data-a-target="clips-carousel"],
+html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-chat #live-chat-frame,
+html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-chat [data-a-target="chat-room"] {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-explore a[href="/explore"],
+html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-explore a[href="/i/explore"],
+html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-explore [data-testid="AppTabBar_Explore_Link"],
+html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-for-you-tab a[href*="/for-you" i],
+html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-for-you-tab [role="tab"][aria-label*="for you" i] {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-reels a[href*="/reels" i],
+html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-watch a[href*="/watch" i],
+html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-stories [data-pagelet*="story" i],
+html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-stories [aria-label*="stories" i] {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-doodles #hplogo,
+html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-doodles img[alt*="doodle" i],
+html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-discover [data-attrid*="discover" i],
+html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-news [data-attrid*="news" i] {
+  display: none !important;
+}
+
+html.unaddictify-active.unaddictify-site-pinterest.unaddictify-pinterest-hide-related [data-test-id="relatedPins"],
+html.unaddictify-active.unaddictify-site-pinterest.unaddictify-pinterest-hide-related [data-test-id="more-like-this"],
+html.unaddictify-active.unaddictify-site-snapchat.unaddictify-snapchat-hide-spotlight a[href*="/spotlight" i],
+html.unaddictify-active.unaddictify-site-snapchat.unaddictify-snapchat-hide-discover a[href*="/discover" i],
+html.unaddictify-active.unaddictify-site-snapchat.unaddictify-snapchat-hide-stories a[href*="/stories" i],
+html.unaddictify-active.unaddictify-site-whatsapp.unaddictify-whatsapp-hide-status [data-testid="status-v3"],
+html.unaddictify-active.unaddictify-site-whatsapp.unaddictify-whatsapp-hide-channels [data-testid="channels"],
+html.unaddictify-active.unaddictify-site-messenger.unaddictify-messenger-hide-stories [data-testid*="story" i] {
+  display: none !important;
+}
+
+html:not(.unaddictify-active) .unaddictify-media,
+html:not(.unaddictify-active) .unaddictify-media-surface {
+  filter: none !important;
+  transform: none !important;
+}
