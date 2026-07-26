@@ -114,12 +114,12 @@
       blurThumbnails: false,
       hideNotificationBadges: true,
       hideEngagementCounts: true,
-      stripMedia: false
+      stripMedia: false,
+      hideProfileMedia: false
     },
     siteSettings: DEFAULT_SITE_SETTINGS,
     lockUntil: 0,
     bypassUntil: 0,
-    bypassSite: "",
     bypassCooldownHours: 2,
     bypassDurationMinutes: 10,
     bypassLastGrantedAt: 0
@@ -129,6 +129,7 @@
 
   const FEATURE_KEYS = Object.keys(DEFAULT_SETTINGS.features);
   const YOUTUBE_FOCUS_APPROVALS_KEY = "youtubeFocusApprovals";
+  const LOCK_BASELINE_KEY = "lockBaseline";
   const MAX_YOUTUBE_FOCUS_APPROVALS = 100;
   const SITE_SETTING_KEYS = Object.fromEntries(
     Object.entries(DEFAULT_SITE_SETTINGS).map(([site, values]) => [site, Object.keys(values)])
@@ -286,8 +287,10 @@
       if (!FEATURE_KEYS.includes(key)) delete features[key];
     }
 
-    const sites = { ...defaults.sites, ...(value.sites || {}) };
-    for (const site of Object.keys(defaults.sites)) sites[site] = asBoolean(sites[site], defaults.sites[site]);
+    const sites = {};
+    for (const [site, fallback] of Object.entries(defaults.sites)) {
+      sites[site] = asBoolean(value.sites?.[site], fallback);
+    }
 
     const siteSettings = {};
     for (const [site, siteDefaults] of Object.entries(DEFAULT_SITE_SETTINGS)) {
@@ -299,20 +302,19 @@
     }
 
     const merged = {
-      ...defaults,
-      ...value,
       enabled: asBoolean(value.enabled, defaults.enabled),
       sites,
       features,
-      siteSettings
+      siteSettings,
+      lockUntil: Number(value.lockUntil) || 0,
+      bypassUntil: Number(value.bypassUntil) || 0,
+      bypassCooldownHours: [1, 2, 5, 24].includes(Number(value.bypassCooldownHours))
+        ? Number(value.bypassCooldownHours)
+        : defaults.bypassCooldownHours,
+      bypassDurationMinutes: defaults.bypassDurationMinutes,
+      bypassLastGrantedAt: Math.max(0, Number(value.bypassLastGrantedAt) || 0)
     };
-    merged.lockUntil = Number(merged.lockUntil) || 0;
-    merged.bypassUntil = Number(merged.bypassUntil) || 0;
-    merged.bypassCooldownHours = [1, 2, 5, 24].includes(Number(value.bypassCooldownHours))
-      ? Number(value.bypassCooldownHours)
-      : defaults.bypassCooldownHours;
-    merged.bypassDurationMinutes = defaults.bypassDurationMinutes;
-    merged.bypassLastGrantedAt = Math.max(0, Number(value.bypassLastGrantedAt) || 0);
+    if (merged.lockUntil > Date.now()) merged.enabled = true;
 
     // Keep removed prototype fields from reappearing in the live settings
     // object. They can remain in storage until the next normal save.
@@ -332,9 +334,80 @@
       "scrollGate",
       "scrollLimit",
       "bypassUsedOn",
-      "bypassCount"
+      "bypassCount",
+      "bypassSite"
     ]) delete merged[key];
     return merged;
+  }
+
+  const SETTINGS_SCALAR_KEYS = [
+    "enabled",
+    "lockUntil",
+    "bypassUntil",
+    "bypassCooldownHours",
+    "bypassDurationMinutes",
+    "bypassLastGrantedAt"
+  ];
+
+  function createSettingsPatch(previous = {}, next = {}) {
+    const before = mergeSettings(previous);
+    const after = mergeSettings(next);
+    const patch = {};
+    for (const key of SETTINGS_SCALAR_KEYS) {
+      if (JSON.stringify(before[key]) !== JSON.stringify(after[key])) patch[key] = after[key];
+    }
+
+    const sites = {};
+    for (const site of Object.keys(DEFAULT_SETTINGS.sites)) {
+      if (before.sites[site] !== after.sites[site]) sites[site] = after.sites[site];
+    }
+    if (Object.keys(sites).length) patch.sites = sites;
+
+    const features = {};
+    for (const feature of FEATURE_KEYS) {
+      if (before.features[feature] !== after.features[feature]) features[feature] = after.features[feature];
+    }
+    if (Object.keys(features).length) patch.features = features;
+
+    const siteSettings = {};
+    for (const [site, keys] of Object.entries(SITE_SETTING_KEYS)) {
+      const changed = {};
+      for (const key of keys) {
+        if (before.siteSettings[site][key] !== after.siteSettings[site][key]) {
+          changed[key] = after.siteSettings[site][key];
+        }
+      }
+      if (Object.keys(changed).length) siteSettings[site] = changed;
+    }
+    if (Object.keys(siteSettings).length) patch.siteSettings = siteSettings;
+    return patch;
+  }
+
+  function createStoragePatch(previous = {}, next = {}) {
+    const before = mergeSettings(previous);
+    const after = mergeSettings(next);
+    const patch = createSettingsPatch(before, after);
+    if (patch.sites) patch.sites = after.sites;
+    if (patch.features) patch.features = after.features;
+    if (patch.siteSettings) patch.siteSettings = after.siteSettings;
+    return patch;
+  }
+
+  function applySettingsPatch(base = {}, patch = {}) {
+    const current = mergeSettings(base);
+    const next = { ...current };
+    for (const key of SETTINGS_SCALAR_KEYS) {
+      if (Object.hasOwn(patch, key)) next[key] = patch[key];
+    }
+    if (patch.sites) next.sites = { ...current.sites, ...patch.sites };
+    if (patch.features) next.features = { ...current.features, ...patch.features };
+    if (patch.siteSettings) {
+      next.siteSettings = { ...current.siteSettings };
+      for (const [site, values] of Object.entries(patch.siteSettings)) {
+        next.siteSettings[site] = { ...(current.siteSettings[site] || {}), ...values };
+      }
+    }
+    return mergeSettings(next);
   }
 
   function getSiteFromUrl(url = "") {
@@ -342,23 +415,24 @@
       const parsed = new URL(url);
       const host = parsed.hostname;
       const path = parsed.pathname || "/";
-      const isHostOrSubdomain = (domain) => host === domain || host.endsWith(`.${domain}`);
-      if (isHostOrSubdomain("instagram.com")) return "instagram";
-      if (isHostOrSubdomain("discord.com") || isHostOrSubdomain("discordapp.com")) return "discord";
-      if (isHostOrSubdomain("reddit.com")) return "reddit";
-      if (isHostOrSubdomain("youtube.com")) return "youtube";
-      if (isHostOrSubdomain("tiktok.com")) return "tiktok";
-      if (isHostOrSubdomain("twitch.tv")) return "twitch";
-      if (isHostOrSubdomain("x.com") || isHostOrSubdomain("twitter.com")) return "x";
-      if (isHostOrSubdomain("facebook.com")) return "facebook";
-      if (/^(?:www\.)?google\.(?:com|ca)$/.test(host) && (path === "/" || path.startsWith("/search") || path.startsWith("/webhp"))) return "google";
-      if (/^(?:news|images)\.google\.(?:com|ca)$/.test(host)) return "google";
-      if (isHostOrSubdomain("pinterest.com")) return "pinterest";
-      if (host === "linkedin.com" || host.endsWith(".linkedin.com")) return "linkedin";
-      if (isHostOrSubdomain("threads.net") || isHostOrSubdomain("threads.com")) return "threads";
-      if (isHostOrSubdomain("snapchat.com")) return "snapchat";
-      if (host === "web.whatsapp.com") return "whatsapp";
-      if (isHostOrSubdomain("messenger.com")) return "messenger";
+      const isOneOf = (...hosts) => hosts.includes(host);
+      if (isOneOf("instagram.com", "www.instagram.com")) return "instagram";
+      if (isOneOf("discord.com", "www.discord.com", "discordapp.com", "www.discordapp.com")) return "discord";
+      if (isOneOf("reddit.com", "www.reddit.com", "old.reddit.com")) return "reddit";
+      if (isOneOf("youtube.com", "www.youtube.com")) return "youtube";
+      if (isOneOf("tiktok.com", "www.tiktok.com")) return "tiktok";
+      if (isOneOf("twitch.tv", "www.twitch.tv")) return "twitch";
+      if (isOneOf("x.com", "www.x.com", "twitter.com", "www.twitter.com")) return "x";
+      if (isOneOf("facebook.com", "www.facebook.com")) return "facebook";
+      if (isOneOf("google.com", "www.google.com", "google.ca", "www.google.ca") &&
+        (path === "/" || path.startsWith("/search") || path.startsWith("/webhp"))) return "google";
+      if (isOneOf("news.google.com", "news.google.ca", "images.google.com", "images.google.ca")) return "google";
+      if (isOneOf("pinterest.com", "www.pinterest.com")) return "pinterest";
+      if (isOneOf("linkedin.com", "www.linkedin.com")) return "linkedin";
+      if (isOneOf("threads.net", "www.threads.net", "threads.com", "www.threads.com")) return "threads";
+      if (isOneOf("web.snapchat.com")) return "snapchat";
+      if (isOneOf("web.whatsapp.com")) return "whatsapp";
+      if (isOneOf("messenger.com", "www.messenger.com")) return "messenger";
     } catch (_) {
       // Unsupported or unavailable tab URL.
     }
@@ -374,7 +448,7 @@
   }
 
   function isBypassed(settings, site, now = Date.now()) {
-    return Boolean(site && settings?.bypassSite === site && Number(settings?.bypassUntil) > now);
+    return Boolean(site && Number(settings?.bypassUntil) > now);
   }
 
   function getBypassAvailableAt(settings) {
@@ -412,6 +486,37 @@
     return Number(next.lockUntil) < Number(previous.lockUntil) && isLocked(previous);
   }
 
+  function repairLockedSettings(baseline = {}, current = {}) {
+    const floor = mergeSettings(baseline);
+    const next = mergeSettings(current);
+    if (!isLocked(floor)) return next;
+
+    if (floor.enabled && !next.enabled) next.enabled = true;
+    for (const site of Object.keys(DEFAULT_SETTINGS.sites)) {
+      if (floor.sites[site] && !next.sites[site]) next.sites[site] = true;
+    }
+    next.features.monochrome = Math.max(
+      Number(next.features.monochrome),
+      Number(floor.features.monochrome)
+    );
+    for (const feature of FEATURE_KEYS.filter((key) => key !== "monochrome")) {
+      if (floor.features[feature] && !next.features[feature]) next.features[feature] = true;
+    }
+    next.bypassCooldownHours = Math.max(
+      Number(next.bypassCooldownHours),
+      Number(floor.bypassCooldownHours)
+    );
+    for (const [site, keys] of Object.entries(SITE_SETTING_KEYS)) {
+      for (const key of keys) {
+        if (floor.siteSettings[site][key] && !next.siteSettings[site][key]) {
+          next.siteSettings[site][key] = true;
+        }
+      }
+    }
+    if (Number(next.lockUntil) < Number(floor.lockUntil)) next.lockUntil = floor.lockUntil;
+    return mergeSettings(next);
+  }
+
   function formatUntil(timestamp) {
     if (!timestamp) return "Not locked";
     const date = new Date(timestamp);
@@ -425,8 +530,12 @@
     FEATURE_KEYS,
     SITE_LABELS,
     YOUTUBE_FOCUS_APPROVALS_KEY,
+    LOCK_BASELINE_KEY,
     cloneDefaults,
     mergeSettings,
+    createSettingsPatch,
+    createStoragePatch,
+    applySettingsPatch,
     getSiteFromUrl,
     getYouTubeVideoId,
     dayKey,
@@ -436,6 +545,7 @@
     isBypassAvailable,
     isActiveForSite,
     isWeakeningChange,
+    repairLockedSettings,
     normalizeYouTubeFocusApprovals,
     getYouTubeFocusApprovalMode,
     isYouTubeVideoApproved,

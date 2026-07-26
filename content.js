@@ -1,10 +1,10 @@
 (() => {
   const U = globalThis.UnaddictifySettings;
   let currentSite = U.getSiteFromUrl(location.href);
-  if (!currentSite) return;
 
-  // Keep the first paint neutral without intercepting navigation or media
-  // loading. Playback is only paused later for the opt-in YouTube Focus gate.
+  // Keep the first paint neutral while settings and the current route resolve.
+  // The lifecycle must remain installed even on a matched but unsupported path
+  // so SPA navigation can later enter a supported surface.
   document.documentElement.classList.add("unaddictify-pending");
 
   const SITE_SETTING_CLASS_MAP = {
@@ -95,6 +95,7 @@
     "unaddictify-hide-notification-badges",
     "unaddictify-hide-engagement-counts",
     "unaddictify-strip-media",
+    "unaddictify-hide-profile-media",
     "unaddictify-instagram-hide-reels",
     "unaddictify-instagram-hide-comments",
     "unaddictify-discord-hide-media",
@@ -115,7 +116,8 @@
     blurThumbnails: "unaddictify-blur-thumbnails",
     hideNotificationBadges: "unaddictify-hide-notification-badges",
     hideEngagementCounts: "unaddictify-hide-engagement-counts",
-    stripMedia: "unaddictify-strip-media"
+    stripMedia: "unaddictify-strip-media",
+    hideProfileMedia: "unaddictify-hide-profile-media"
   };
 
   const CARD_SELECTOR = [
@@ -379,13 +381,68 @@
     "ytd-mini-guide-entry-renderer"
   ];
 
-  const ENGAGEMENT_PATTERN = /\b\d[\d,.]*\s*(?:[KMB]+)?\s*(likes?|comments?|views?|followers?|following?|votes?|shares?)\b/i;
+  const ENGAGEMENT_PATTERN = /\b\d[\d,.]*\s*(?:[KMB]+)?\s*(likes?|comments?|views?|followers?|following?|subscribers?|members?|votes?|shares?|reposts?|reactions?|saves?|upvotes?|points?|ratings?)\b/i;
   const COUNT_ONLY_PATTERN = /^\s*\d[\d,.]*\s*(?:[KMB]+)?\s*$/i;
   const DISCOVERY_COPY_PATTERN = /\b(?:recommended|suggested|for you|you might like|more like this|people you may know|who to follow|trending|discover|recommended for you|sponsored)\b/i;
+  const DISCOVERY_TARGET_SELECTOR = [
+    "[data-a-target='preview-card']",
+    "[data-a-target='side-nav-card']",
+    "[data-a-target='recommendations']",
+    "[data-a-target='recommended-channels']",
+    "[data-a-target='followed-channels']",
+    "[data-testid*='recommend' i]",
+    "[data-testid*='suggest' i]",
+    "[data-pagelet*='suggest' i]",
+    "[data-attrid]"
+  ].join(",");
+  const DISCOVERY_SCOPE_SELECTOR = `${DISCOVERY_TARGET_SELECTOR}, section, [role='region']`;
+  const DISCOVERY_TEXT_SELECTOR = "a, li, h5, h6, span, div, p, small, label";
+  const MUTATION_ATTRIBUTE_SCOPE_SELECTOR = [
+    CARD_SELECTOR,
+    DISCOVERY_TARGET_SELECTOR,
+    "nav",
+    "header",
+    "[role='banner']",
+    "[role='navigation']",
+    "[role='tablist']",
+    "[aria-label*='notification' i]",
+    "[aria-label*='unread' i]",
+    "[aria-label*='mention' i]"
+  ].join(",");
+  const MUTATION_CONTENT_SELECTOR = [
+    CARD_SELECTOR,
+    "img, video, canvas",
+    "[role='img']",
+    MEDIA_WRAPPER_SELECTOR,
+    MEDIA_SURFACE_SELECTOR,
+    DISCOVERY_TARGET_SELECTOR,
+    "section, [role='region']",
+    "h1, h2, h3, h4, h5, h6, [role='heading'], [aria-label], [title]",
+    "nav a, header a, [role='tab']",
+    "[aria-label*='notification' i], [aria-label*='unread' i], [aria-label*='mention' i]"
+  ].join(",");
+  const MUTATION_NESTED_ANCESTOR_SELECTOR = [
+    "nav a",
+    "header a",
+    "[role='tab']",
+    "h1, h2, h3, h4, h5, h6, [role='heading']",
+    "[aria-label]",
+    "[title]",
+    "[data-testid*='recommend' i]",
+    "[data-testid*='suggest' i]",
+    "[data-pagelet*='suggest' i]",
+    "[data-a-target]"
+  ].join(",");
+  const RESCAN_ATTRIBUTES = new Set([
+    "aria-label", "title", "href", "data-testid", "data-test-id", "data-e2e",
+    "data-a-target", "data-pagelet", "data-attrid", "data-list-item-id"
+  ]);
 
   let settings = U.mergeSettings(U.cloneDefaults());
   let active = false;
   let observedUrl = location.href;
+  let originalPushState = null;
+  let originalReplaceState = null;
   let observer = null;
   let scanTimer = null;
   let scanIdleHandle = null;
@@ -393,6 +450,7 @@
   let focusLockTimer = null;
   let youtubeGateFrame = null;
   let youtubeGate = null;
+  let youtubeGateRestoreFocus = null;
   let youtubeApprovedPlayer = null;
   let youtubeFocusApprovals = U.normalizeYouTubeFocusApprovals();
   const youtubeOpenedVideoChoices = new Map();
@@ -472,9 +530,27 @@
     };
   }
 
-  function removeYouTubeGate() {
+  function focusWithoutScroll(element) {
+    if (!element?.isConnected || typeof element.focus !== "function") return false;
+    try {
+      element.focus({ preventScroll: true });
+    } catch (_) {
+      element.focus();
+    }
+    return true;
+  }
+
+  function removeYouTubeGate({ restoreFocus = true } = {}) {
+    const restore = youtubeGateRestoreFocus;
+    const player = youtubeGate?.parentElement;
+    const hadGate = Boolean(youtubeGate);
     youtubeGate?.remove();
     youtubeGate = null;
+    youtubeGateRestoreFocus = null;
+    if (!restoreFocus || (!hadGate && !restore)) return;
+    if (focusWithoutScroll(restore)) return;
+    const fallback = player?.querySelector?.("video") || player || document.body;
+    focusWithoutScroll(fallback);
   }
 
   function clearStaleYouTubeFocusApprovals() {
@@ -505,6 +581,7 @@
     gate.setAttribute("aria-modal", "true");
     gate.setAttribute("aria-labelledby", "unaddictify-youtube-gate-title");
     gate.setAttribute("aria-describedby", "unaddictify-youtube-gate-description");
+    gate.tabIndex = -1;
 
     const sheet = document.createElement("div");
     sheet.className = "unaddictify-youtube-focus-sheet";
@@ -596,8 +673,29 @@
       keepPausedButton.textContent = "Video will stay paused";
       gate.classList.add("unaddictify-youtube-focus-kept-paused");
       description.textContent = "The video will stay paused. Choose a viewing mode whenever you are ready.";
+      actions.querySelector("button:not(:disabled)")?.focus?.({ preventScroll: true });
     });
     actions.append(keepPausedButton);
+
+    gate.addEventListener("keydown", (event) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        keepPausedButton.click();
+        return;
+      }
+      if (event.key !== "Tab") return;
+      const focusable = [...gate.querySelectorAll("button:not(:disabled)")];
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    });
 
     sheet.append(eyebrow, heading, title, meta, description, actions);
     gate.append(sheet);
@@ -606,7 +704,7 @@
 
   function syncYouTubeFocusGate() {
     if (currentSite !== "youtube") {
-      removeYouTubeGate();
+      removeYouTubeGate({ restoreFocus: true });
       setApprovedYouTubePlayer();
       return;
     }
@@ -614,14 +712,14 @@
     const player = document.querySelector("#movie_player");
     const videoId = currentYouTubeVideoId();
     if (!player || !videoId || !active) {
-      removeYouTubeGate();
+      removeYouTubeGate({ restoreFocus: true });
       setApprovedYouTubePlayer();
       return;
     }
 
     const gateMode = getYouTubeGateMode(videoId);
     if (!gateMode) {
-      removeYouTubeGate();
+      removeYouTubeGate({ restoreFocus: true });
       const playbackMode = getYouTubePlaybackMode(videoId);
       const restoreNormalPlayer = !settings.siteSettings.youtube.sabotageOpenedVideos || playbackMode === "normal";
       setApprovedYouTubePlayer(restoreNormalPlayer ? player : null);
@@ -638,7 +736,10 @@
       youtubeGate.dataset.gateMode !== gateMode ||
       youtubeGate.dataset.frictionAvailable !== String(frictionAvailable)
     ) {
-      removeYouTubeGate();
+      const previousFocus = document.activeElement;
+      const focusToRestore = previousFocus && !youtubeGate?.contains(previousFocus) ? previousFocus : null;
+      removeYouTubeGate({ restoreFocus: false });
+      youtubeGateRestoreFocus = focusToRestore;
       youtubeGate = createYouTubeGate(player, videoId, gateMode);
       youtubeGate.dataset.videoId = videoId;
       player.append(youtubeGate);
@@ -691,16 +792,44 @@
     touched.add(element);
   }
 
+  function isProfileMedia(element) {
+    if (!element?.matches?.("img")) return false;
+    if (isDiscordProfileImage(element)) return true;
+    const source = [
+      element.currentSrc,
+      element.src,
+      element.getAttribute("src"),
+      element.getAttribute("srcset"),
+      element.getAttribute("data-src"),
+      element.getAttribute("data-lazy-src")
+    ].filter(Boolean).join(" ");
+    const alt = element.getAttribute("alt") || "";
+    if (currentSite === "linkedin" &&
+      /(?:licdn\.com|linkedin\.com\/dms\/image)/i.test(source) &&
+      !element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`)) return true;
+    return Boolean(
+      /(?:avatar|profile picture|profile photo|headshot|portrait)/i.test(alt) ||
+      element.closest(
+        "[class*='avatar' i], [class*='profile' i], [data-testid*='avatar' i], [data-testid*='profile' i], [aria-label*='avatar' i], [aria-label*='profile picture' i]"
+      )
+    );
+  }
+
   function isVisualImage(element) {
     if (element.matches("canvas")) return Boolean(element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`));
-    if (!element.matches("img")) return true;
+    if (element.matches("video")) {
+      return Boolean(
+        element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`) ||
+        (currentSite === "youtube" && element.closest("#movie_player") && settings.siteSettings.youtube.sabotageOpenedVideos)
+      );
+    }
+    if (!element.matches("img")) return false;
+    if (isProfileMedia(element)) return Boolean(settings.features.hideProfileMedia);
     if (isDiscordEmoji(element)) return false;
-    if (isDiscordProfileImage(element)) return true;
-    if (isYouTubeShortsMedia(element) || element.closest(CARD_SELECTOR)) return true;
     if (element.closest("header, nav, [role='banner'], [role='navigation'], button, [role='button']")) return false;
-    const source = [element.currentSrc, element.src, element.getAttribute("srcset"), element.getAttribute("data-src"), element.getAttribute("data-lazy-src")]
-      .filter(Boolean).join(" ");
-    if (currentSite === "linkedin" && /(?:licdn\.com|linkedin\.com\/dms\/image)/i.test(source)) return true;
+    if (isYouTubeShortsMedia(element) || element.closest(CARD_SELECTOR)) return true;
+    if (currentSite === "linkedin" &&
+      element.closest(".feed-shared-update-v2, [class*='feed-shared' i], [class*='update-components' i], [data-urn*='activity' i]")) return true;
     // Search chrome, chat avatars, and utility logos should not be treated as
     // feed media just because they happen to be large images. A semantic media
     // wrapper is enough to include sites whose card markup is less stable.
@@ -711,7 +840,14 @@
 
   function isDiscordProfileImage(element) {
     if (currentSite !== "discord" || !element?.matches?.("img")) return false;
-    const source = [element.currentSrc, element.src, element.getAttribute("src")].filter(Boolean).join(" ");
+    const source = [
+      element.currentSrc,
+      element.src,
+      element.getAttribute("src"),
+      element.getAttribute("srcset"),
+      element.getAttribute("data-src"),
+      element.getAttribute("data-lazy-src")
+    ].filter(Boolean).join(" ");
     return Boolean(
       element.closest("[class*='avatar' i], [data-list-item-id^='guildsnav'], [class*='guildIcon' i], [class*='serverIcon' i]") ||
       /(?:discordapp\.com|discord\.com)\/(?:icons|avatars|team-icons|app-icons|banners)\//i.test(source)
@@ -758,8 +894,8 @@
   }
 
   function syncMediaElement(element) {
-    const profile = isDiscordProfileImage(element);
-    const visual = isVisualImage(element);
+    const profile = isProfileMedia(element);
+    const visual = profile ? Boolean(settings.features.hideProfileMedia) : isVisualImage(element);
     setMediaClass(element, "unaddictify-profile-media", profile);
     setMediaClass(element, "unaddictify-media", visual);
     setMediaClass(element, "unaddictify-thumbnail", visual && isThumbnailMedia(element));
@@ -801,7 +937,6 @@
   function scheduleBypassRefresh() {
     window.clearTimeout(bypassTimer);
     bypassTimer = null;
-    if (settings?.bypassSite !== currentSite) return;
     const remaining = Number(settings?.bypassUntil) - Date.now();
     if (remaining <= 0) return;
     bypassTimer = window.setTimeout(() => {
@@ -916,15 +1051,79 @@
     }
   }
 
+  function getDiscoveryOwners(element) {
+    const owners = [];
+    let current = element;
+    let depth = 0;
+    while (current && depth < 6) {
+      if (current.matches?.(DISCOVERY_TARGET_SELECTOR)) owners.push(current);
+      current = current.parentElement;
+      depth += 1;
+    }
+    const broadOwner = element.closest?.("section, [role='region']");
+    if (broadOwner && !owners.includes(broadOwner)) owners.push(broadOwner);
+    return owners;
+  }
+
+  function discoveryLabel(element, pattern = DISCOVERY_COPY_PATTERN) {
+    const discoveryOwners = getDiscoveryOwners(element);
+    const semanticNodes = [
+      ...discoveryOwners,
+      element,
+      ...(element.querySelectorAll?.(
+        "h1, h2, h3, h4, h5, h6, [role='heading'], [aria-label], [title], [data-testid*='recommend' i], [data-testid*='suggest' i], [data-pagelet*='suggest' i]"
+      ) || [])
+    ].slice(0, 48);
+    const labels = [];
+    const seen = new Set();
+    const addLabel = (value) => {
+      const text = value?.trim().replace(/\s+/g, " ") || "";
+      if (text && !seen.has(text)) {
+        seen.add(text);
+        labels.push(text);
+      }
+    };
+
+    for (const node of semanticNodes) {
+      const semanticText = node.matches?.("h1, h2, h3, h4, h5, h6, [role='heading']") ? node.textContent : "";
+      addLabel([
+        node.getAttribute?.("aria-label"),
+        node.getAttribute?.("title"),
+        node.getAttribute?.("data-testid"),
+        node.getAttribute?.("data-pagelet"),
+        node.getAttribute?.("data-a-target"),
+        node.getAttribute?.("data-attrid"),
+        semanticText
+      ].filter(Boolean).join(" "));
+    }
+
+    // Recommendation labels are often plain spans or divs with no semantic
+    // attribute. Only retain short leaf-ish text that actually matches the
+    // discovery vocabulary; never copy the whole card's text into the label.
+    const ordinaryNodes = [
+      ...discoveryOwners.filter((owner) => owner !== element && owner.matches?.(DISCOVERY_TEXT_SELECTOR)),
+      ...(element.matches?.(DISCOVERY_TEXT_SELECTOR) ? [element] : []),
+      ...(element.querySelectorAll?.(DISCOVERY_TEXT_SELECTOR) || [])
+    ].slice(0, 96);
+    for (const node of ordinaryNodes) {
+      if (node.closest?.("script, style, textarea, input, select, option")) continue;
+      if (node.children?.length > 2) continue;
+      const text = node.textContent?.trim().replace(/\s+/g, " ") || "";
+      if (text.length > 120 || !pattern.test(text)) continue;
+      addLabel(text);
+    }
+    return labels.join(" ");
+  }
+
   function hideCardsMatching(root, selectors, pattern) {
     for (const element of queryWithin(root, selectors)) {
-      if (pattern.test(element.textContent?.replace(/\s+/g, " ").trim() || "")) addClass(findDiscoveryCard(element), "unaddictify-hidden-site-item");
+      if (pattern.test(discoveryLabel(element, pattern))) addClass(findDiscoveryCard(element), "unaddictify-hidden-site-item");
     }
   }
 
   function findDiscoveryCard(element) {
     return element.closest(
-      "article, [role='article'], [data-testid='cellInnerDiv'], [data-testid='post-container'], [data-test-id='pin'], [data-test-id='pinWrapper'], [data-a-target='preview-card'], section, [role='region'], [data-attrid], li"
+      `article, [role='article'], [data-testid='cellInnerDiv'], [data-testid='post-container'], [data-test-id='pin'], [data-test-id='pinWrapper'], ${DISCOVERY_SCOPE_SELECTOR}, li`
     ) || element.parentElement || element;
   }
 
@@ -1135,9 +1334,24 @@
 
   function rootStateNeedsRepair() {
     const root = document.documentElement;
-    if (!active) return root.classList.contains("unaddictify-active");
-    return !root.classList.contains("unaddictify-active") ||
-      !root.classList.contains(`unaddictify-site-${currentSite}`);
+    if (!active) {
+      return ROOT_CLASSES.some((className) => root.classList.contains(className)) ||
+        root.style.getPropertyValue("--unaddictify-monochrome");
+    }
+
+    const required = ["unaddictify-active", `unaddictify-site-${currentSite}`];
+    const monochrome = U.asPercent(settings.features.monochrome, 0);
+    if (monochrome > 0) required.push("unaddictify-monochrome");
+    for (const [feature, className] of Object.entries(ROOT_FEATURE_CLASSES)) {
+      if (settings.features[feature]) required.push(className);
+    }
+    const siteOptions = settings.siteSettings[currentSite] || {};
+    for (const [key, className] of Object.entries(SITE_SETTING_CLASS_MAP[currentSite] || {})) {
+      if (siteOptions[key]) required.push(className);
+    }
+    const expectedMonochrome = monochrome > 0 ? `${monochrome}%` : "";
+    return required.some((className) => !root.classList.contains(className)) ||
+      root.style.getPropertyValue("--unaddictify-monochrome") !== expectedMonochrome;
   }
 
   function applyRootState() {
@@ -1147,7 +1361,7 @@
     const shouldBeActive = U.isActiveForSite(settings, currentSite);
     if (!shouldBeActive) {
       active = false;
-      removeYouTubeGate();
+      removeYouTubeGate({ restoreFocus: true });
       setApprovedYouTubePlayer();
       cleanupTouched();
       scheduleBypassRefresh();
@@ -1175,12 +1389,39 @@
     scheduleScan(document);
   }
 
+  function notifyLocationChange() {
+    window.dispatchEvent(new Event("unaddictify-location-change"));
+  }
+
+  function installHistoryListeners() {
+    originalPushState = history.pushState;
+    originalReplaceState = history.replaceState;
+    history.pushState = function (...args) {
+      const result = originalPushState.apply(this, args);
+      notifyLocationChange();
+      return result;
+    };
+    history.replaceState = function (...args) {
+      const result = originalReplaceState.apply(this, args);
+      notifyLocationChange();
+      return result;
+    };
+  }
+
+  function removeHistoryListeners() {
+    if (originalPushState && history.pushState !== originalPushState) history.pushState = originalPushState;
+    if (originalReplaceState && history.replaceState !== originalReplaceState) history.replaceState = originalReplaceState;
+    originalPushState = null;
+    originalReplaceState = null;
+  }
+
   function syncSiteContext() {
     if (location.href === observedUrl) return;
     observedUrl = location.href;
     const nextSite = U.getSiteFromUrl(location.href);
     if (nextSite === currentSite) {
-      syncYouTubeContext();
+      cleanupTouched();
+      applyRootState();
       return;
     }
     currentSite = nextSite;
@@ -1188,17 +1429,15 @@
     bypassTimer = null;
     window.clearTimeout(focusLockTimer);
     focusLockTimer = null;
-    removeYouTubeGate();
+    removeYouTubeGate({ restoreFocus: true });
     setApprovedYouTubePlayer();
     cleanupTouched();
     const root = document.documentElement;
     root.classList.remove("unaddictify-pending", ...ROOT_CLASSES);
     root.style.removeProperty("--unaddictify-monochrome");
     active = false;
-    if (currentSite) {
-      root.classList.add("unaddictify-pending");
-      applyRootState();
-    }
+    if (currentSite) root.classList.add("unaddictify-pending");
+    applyRootState();
   }
 
   function scanDocument(roots = [document]) {
@@ -1232,7 +1471,7 @@
         "unaddictify-hidden-comments"
       );
       const aria = originalAria.get(element);
-      if (aria) {
+      if (aria && element.getAttribute("aria-label") === aria.masked) {
         if (aria.original === null) element.removeAttribute("aria-label");
         else element.setAttribute("aria-label", aria.original);
       }
@@ -1301,6 +1540,41 @@
     requestScanPass();
   }
 
+  function hasBoundedDiscoveryText(element) {
+    const text = element?.textContent?.trim().replace(/\s+/g, " ") || "";
+    return text.length <= 120 && DISCOVERY_COPY_PATTERN.test(text);
+  }
+
+  function findMutationScanRoot(node, includeDescendants = false) {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    if (!element) return null;
+    const card = element.closest?.(CARD_SELECTOR);
+    if (card) return card;
+    const relevantAncestor = element.closest?.(MUTATION_NESTED_ANCESTOR_SELECTOR);
+    const relevant = isPotentialMediaTarget(element) ||
+      element.matches?.(MUTATION_CONTENT_SELECTOR) ||
+      relevantAncestor ||
+      (includeDescendants && element.querySelector?.(MUTATION_CONTENT_SELECTOR));
+    const discoveryText = hasBoundedDiscoveryText(element);
+    if (!relevant && !discoveryText) return null;
+    if (discoveryText) {
+      return element.closest?.(DISCOVERY_TARGET_SELECTOR) || relevantAncestor || element;
+    }
+    return relevantAncestor || element;
+  }
+
+  function scheduleMutationScan(node, includeDescendants = false) {
+    const root = findMutationScanRoot(node, includeDescendants);
+    if (root) scheduleScan(root);
+  }
+
+  function shouldRescanMutationAttribute(target, attributeName) {
+    if (isPotentialMediaTarget(target)) return true;
+    if (attributeName === "class" && target.matches?.(CARD_SELECTOR)) return true;
+    if (!RESCAN_ATTRIBUTES.has(attributeName)) return false;
+    return Boolean(target.matches?.(MUTATION_ATTRIBUTE_SCOPE_SELECTOR) || target.closest?.(MUTATION_ATTRIBUTE_SCOPE_SELECTOR));
+  }
+
   function isPotentialMediaTarget(element) {
     return Boolean(element?.matches?.(
       `img, video, canvas, [role='img'], [style*='background-image' i], ${MEDIA_WRAPPER_SELECTOR}, .unaddictify-media, .unaddictify-media-surface, .unaddictify-profile-media`
@@ -1310,6 +1584,13 @@
   function handleMediaLoad(event) {
     if (!active || !event.target?.matches?.("img, video, canvas")) return;
     scheduleScan(event.target);
+    if (currentSite === "youtube" && event.target.closest?.("#movie_player")) scheduleYouTubeGateSync();
+  }
+
+  function handleYouTubeNavigateFinish() {
+    syncSiteContext();
+    syncYouTubeContext();
+    scheduleScan(document);
   }
 
   async function init() {
@@ -1324,28 +1605,34 @@
     delete stored[U.YOUTUBE_FOCUS_APPROVALS_KEY];
     settings = U.mergeSettings(stored);
     clearStaleYouTubeFocusApprovals();
+    syncSiteContext();
     applyRootState();
     observer = new MutationObserver((records) => {
       let shouldSyncYouTubeGate = false;
       for (const record of records) {
+        if (record.type === "characterData") {
+          scheduleMutationScan(record.target);
+          continue;
+        }
         if (record.type === "attributes") {
           const target = record.target;
-          if (target === document.documentElement && record.attributeName === "class") {
+          if (target === document.documentElement && (record.attributeName === "class" || record.attributeName === "style")) {
             if (rootStateNeedsRepair()) applyRootState();
             continue;
           }
-          // YouTube and feed frameworks often recycle an existing media node
-          // by replacing its class/src/style instead of inserting a new node.
-          // Rescan those nodes so the global media treatment is reattached.
-          if (isPotentialMediaTarget(target) || (record.attributeName === "style" && target.closest?.(CARD_SELECTOR))) {
-            scheduleScan(target);
+          if (shouldRescanMutationAttribute(target, record.attributeName)) {
+            scheduleMutationScan(target);
           }
           if (currentSite === "youtube" && target.matches?.("video, #movie_player")) shouldSyncYouTubeGate = true;
           continue;
         }
         for (const node of record.addedNodes) {
+          if (node.nodeType === Node.TEXT_NODE) {
+            scheduleMutationScan(record.target);
+            continue;
+          }
           if (node.nodeType !== Node.ELEMENT_NODE) continue;
-          scheduleScan(node);
+          scheduleMutationScan(node, true);
           if (
             currentSite === "youtube" &&
             (node.matches?.("video, #movie_player, ytd-watch-metadata, ytd-watch-flexy") ||
@@ -1359,22 +1646,24 @@
     });
     observer.observe(document.documentElement, {
       attributes: true,
-      attributeFilter: ["class", "style", "src", "srcset", "data-src", "data-lazy-src", "poster"],
+      attributeFilter: [
+        "class", "style", "src", "srcset", "data-src", "data-lazy-src", "poster",
+        "aria-label", "title", "href", "data-testid", "data-test-id", "data-e2e",
+        "data-a-target", "data-pagelet", "data-attrid", "data-list-item-id"
+      ],
+      characterData: true,
       childList: true,
       subtree: true
     });
+    installHistoryListeners();
     window.addEventListener("popstate", syncSiteContext);
+    window.addEventListener("hashchange", syncSiteContext);
+    window.addEventListener("unaddictify-location-change", syncSiteContext);
     document.addEventListener("load", handleMediaLoad, true);
     document.addEventListener("loadeddata", handleMediaLoad, true);
-    if (currentSite === "youtube") {
-      window.addEventListener("popstate", syncYouTubeContext);
-      document.addEventListener("play", guardYouTubePlayback, true);
-      document.addEventListener("yt-navigate-start", scheduleYouTubeGateSync);
-      document.addEventListener("yt-navigate-finish", () => {
-        syncYouTubeContext();
-        scheduleScan(document);
-      });
-    }
+    document.addEventListener("play", guardYouTubePlayback, true);
+    document.addEventListener("yt-navigate-start", scheduleYouTubeGateSync);
+    document.addEventListener("yt-navigate-finish", handleYouTubeNavigateFinish);
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (changes[U.YOUTUBE_FOCUS_APPROVALS_KEY]) {
@@ -1401,12 +1690,15 @@
     pendingRoots.clear();
     pendingDocumentScan = false;
     window.removeEventListener("popstate", syncSiteContext);
-    window.removeEventListener("popstate", syncYouTubeContext);
+    window.removeEventListener("hashchange", syncSiteContext);
+    window.removeEventListener("unaddictify-location-change", syncSiteContext);
+    removeHistoryListeners();
     document.removeEventListener("load", handleMediaLoad, true);
     document.removeEventListener("loadeddata", handleMediaLoad, true);
     document.removeEventListener("play", guardYouTubePlayback, true);
     document.removeEventListener("yt-navigate-start", scheduleYouTubeGateSync);
-    removeYouTubeGate();
+    document.removeEventListener("yt-navigate-finish", handleYouTubeNavigateFinish);
+    removeYouTubeGate({ restoreFocus: false });
     setApprovedYouTubePlayer();
     cleanupTouched();
   }

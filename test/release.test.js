@@ -13,7 +13,7 @@ test("manifest is ready for a production package", () => {
   assert.equal(manifest.name, "blokamine");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.ok(manifest.description.length >= 25 && manifest.description.length <= 132);
-  assert.deepEqual(manifest.permissions, ["storage", "activeTab"]);
+  assert.deepEqual(manifest.permissions, ["storage", "activeTab", "alarms"]);
   assert.equal(manifest.action.default_popup, "popup.html");
   assert.equal(manifest.options_page, "options.html");
 

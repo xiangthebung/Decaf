@@ -101,7 +101,7 @@
     $("#site-state").textContent = !hasSite
       ? ""
       : bypassed
-        ? `This site is open for your break (${formatRemaining(settings.bypassUntil)}).`
+        ? `Break is open on supported sites (${formatRemaining(settings.bypassUntil)}).`
         : active
           ? "These changes are active here."
           : "blokamine is off on this site.";
@@ -169,7 +169,7 @@
     $("#break-code-input").disabled = !locked || bypassed || !available || !currentSite || !active;
     if (bypassed) {
       $("#pass-title").textContent = "Break active";
-      $("#pass-copy").textContent = `This site is open for ${formatRemaining(settings.bypassUntil)}.`;
+      $("#pass-copy").textContent = `Break is open on supported sites (${formatRemaining(settings.bypassUntil)}).`;
       $("#pass-code-status").textContent = "";
     } else if (!available) {
       $("#pass-title").textContent = "Break cooling down";
@@ -184,31 +184,51 @@
       $("#pass-copy").textContent = "This site is off in Site coverage.";
       $("#pass-code-status").textContent = "Turn this site on in settings before opening a break.";
     } else {
-      $("#pass-title").textContent = "Unlock this site for 10 minutes";
-      $("#pass-copy").textContent = "Type or paste the 6-character code to open this site for 10 minutes.";
+      $("#pass-title").textContent = "Open a global break for 10 minutes";
+      $("#pass-copy").textContent = "Type or paste the 6-character code to open a break on all supported sites for 10 minutes.";
       const cooldownHours = Number(settings.bypassCooldownHours);
       $("#pass-code-status").textContent = `The break cooldown is ${cooldownHours} hour${cooldownHours === 1 ? "" : "s"}.`;
     }
     updateBreakButton();
   }
 
+  async function readStoredSettings() {
+    return U.mergeSettings(await chrome.storage.local.get(U.DEFAULT_SETTINGS));
+  }
+
   async function refresh() {
-    settings = U.mergeSettings(await chrome.storage.local.get(U.DEFAULT_SETTINGS));
+    settings = await readStoredSettings();
     const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
     currentSite = U.getSiteFromUrl(activeTab?.url);
     render();
   }
 
-  async function updateSettings(next, message = "Saved") {
-    const previous = settings;
-    const merged = U.mergeSettings(next);
-    if (U.isLocked(previous) && U.isWeakeningChange(previous, merged)) {
+  async function updateSettings(next, message = "Saved", { createLockBaseline = false } = {}) {
+    const requested = U.mergeSettings(next);
+    const patch = U.createSettingsPatch(settings, requested);
+    const latest = await readStoredSettings();
+    if (U.isLocked(latest) && Object.hasOwn(patch, "lockUntil") &&
+      Number(patch.lockUntil) !== Number(latest.lockUntil)) {
+      settings = latest;
       render();
       setMessage("Focus lock is active.");
       return false;
     }
+    const merged = U.applySettingsPatch(latest, patch);
+    const validationCandidate = {
+      ...merged,
+      enabled: Object.hasOwn(patch, "enabled") ? Boolean(patch.enabled) : merged.enabled
+    };
+    if (U.isLocked(latest) && U.isWeakeningChange(latest, validationCandidate)) {
+      settings = latest;
+      render();
+      setMessage("Focus lock is active.");
+      return false;
+    }
+    const storagePatch = U.createStoragePatch(latest, merged);
+    if (createLockBaseline) storagePatch[U.LOCK_BASELINE_KEY] = merged;
+    if (Object.keys(storagePatch).length) await chrome.storage.local.set(storagePatch);
     settings = merged;
-    await chrome.storage.local.set(settings);
     render();
     setMessage(message);
     return true;
@@ -256,18 +276,24 @@
     const lockUntil = Date.now() + hours * 60 * 60 * 1000;
     const saved = await updateSettings(
       { ...settings, enabled: true, lockUntil },
-      `Focus Lock enabled. You're protected until ${formatEndTime(lockUntil)}.`
+      `Focus Lock enabled. You're protected until ${formatEndTime(lockUntil)}.`,
+      { createLockBaseline: true }
     );
     if (saved) celebrateLock();
   }
 
   async function openBreak() {
-    if (!settings || !currentSite || !U.isLocked(settings) || !U.isBypassAvailable(settings)) {
+    const latest = await readStoredSettings();
+    settings = latest;
+    ensureBreakCode();
+    if (!currentSite || !U.isLocked(latest) || !U.isBypassAvailable(latest)) {
+      settings = latest;
       setMessage("Break is not available yet.");
       render();
       return;
     }
-    if (!U.isActiveForSite(settings, currentSite)) {
+    if (!U.isActiveForSite(latest, currentSite)) {
+      settings = latest;
       setMessage("Turn this site on in settings first.");
       render();
       return;
@@ -278,17 +304,13 @@
       return;
     }
     const now = Date.now();
-    settings = U.mergeSettings({
-      ...settings,
-      bypassUntil: now + settings.bypassDurationMinutes * 60 * 1000,
-      bypassSite: currentSite,
+    const next = U.mergeSettings({
+      ...latest,
+      bypassUntil: now + latest.bypassDurationMinutes * 60 * 1000,
       bypassLastGrantedAt: now
     });
-    await chrome.storage.local.set({
-      bypassUntil: settings.bypassUntil,
-      bypassSite: settings.bypassSite,
-      bypassLastGrantedAt: settings.bypassLastGrantedAt
-    });
+    await chrome.storage.local.set(U.createStoragePatch(latest, next));
+    settings = next;
     breakCode = createBreakCode();
     setMessage("Break open for 10 minutes.");
     render();
@@ -299,7 +321,7 @@
     $("#global-enabled").addEventListener("change", (event) => setGlobalEnabled(event).catch(() => setMessage("Settings could not be saved.")));
     $("#site-activation-button").addEventListener("click", () => enableHere().catch(() => setMessage("Could not enable this site.")));
     $("#settings-button").addEventListener("click", () => chrome.runtime.openOptionsPage());
-    $("#lock-button").addEventListener("click", setLock);
+    $("#lock-button").addEventListener("click", () => setLock().catch(() => setMessage("Settings could not be saved.")));
     $("#lock-duration").addEventListener("change", (event) => {
       $("#lock-button").disabled = Number(event.target.value) === 0;
     });

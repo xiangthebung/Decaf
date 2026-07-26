@@ -17,6 +17,7 @@ test("defaults are settings-first and conservative about playback", () => {
   assert.equal(settings.features.hideNotificationBadges, true);
   assert.equal(settings.features.hideEngagementCounts, true);
   assert.equal(settings.features.stripMedia, false);
+  assert.equal(settings.features.hideProfileMedia, false);
   assert.equal(Object.hasOwn(settings.features, "stopAutoplay"), false);
   assert.equal(settings.bypassCooldownHours, 2);
   assert.equal(settings.bypassDurationMinutes, 10);
@@ -117,10 +118,10 @@ test("lock treats opened-video friction like every other boolean", () => {
   assert.equal(U.isWeakeningChange(sabotagedPlayer, normalPlayer), true);
 });
 
-test("site activity respects the temporary pass", () => {
-  const settings = U.mergeSettings({ bypassSite: "reddit", bypassUntil: Date.now() + 60_000, bypassLastGrantedAt: Date.now() });
+test("site activity respects the global temporary break", () => {
+  const settings = U.mergeSettings({ bypassUntil: Date.now() + 60_000, bypassLastGrantedAt: Date.now() });
   assert.equal(U.isActiveForSite(settings, "reddit"), false);
-  assert.equal(U.isActiveForSite(settings, "youtube"), true);
+  assert.equal(U.isActiveForSite(settings, "youtube"), false);
 });
 
 test("break cooldown is configurable and enforced", () => {
@@ -132,11 +133,42 @@ test("break cooldown is configurable and enforced", () => {
 });
 
 test("percent values are clamped and unknown feature flags are dropped", () => {
-  const settings = U.mergeSettings({ features: { monochrome: 240, oldFlag: true } });
-  assert.equal(settings.features.monochrome, 100);
+  const settings = U.mergeSettings({ features: { monochrome: 240, oldFlag: true }, unknownTopLevel: true, sites: { unknownSite: true } });
   assert.equal(Object.hasOwn(settings.features, "oldFlag"), false);
+  assert.equal(Object.hasOwn(settings, "unknownTopLevel"), false);
+  assert.equal(Object.hasOwn(settings.sites, "unknownSite"), false);
 });
 
+test("settings patches preserve unrelated current state", () => {
+  const previous = U.mergeSettings({
+    sites: { reddit: true, youtube: true },
+    features: { monochrome: 75, stripMedia: false }
+  });
+  const next = U.mergeSettings({
+    ...previous,
+    features: { ...previous.features, monochrome: 50 },
+    sites: { ...previous.sites, reddit: false }
+  });
+  const patch = U.createSettingsPatch(previous, next);
+  assert.equal(patch.sites.reddit, false);
+  assert.equal(Object.keys(patch.sites).length, 1);
+  assert.equal(patch.features.monochrome, 50);
+  assert.equal(Object.keys(patch.features).length, 1);
+  const current = U.mergeSettings({ sites: { youtube: false }, features: { stripMedia: true } });
+  const applied = U.applySettingsPatch(current, patch);
+  assert.equal(applied.sites.reddit, false);
+  assert.equal(applied.sites.youtube, false);
+  assert.equal(applied.features.monochrome, 50);
+  assert.equal(applied.features.stripMedia, true);
+  const storagePatch = U.createStoragePatch(previous, next);
+  assert.equal(storagePatch.features.stripMedia, false);
+  assert.equal(storagePatch.sites.youtube, true);
+});
+
+test("active Focus Lock normalizes the extension back on", () => {
+  const settings = U.mergeSettings({ enabled: false, lockUntil: Date.now() + 60_000 });
+  assert.equal(settings.enabled, true);
+});
 test("new site coverage resolves only the intended surfaces", () => {
   const urls = {
     "https://www.tiktok.com/foryou": "tiktok",
@@ -173,11 +205,15 @@ test("site matching does not accept look-alike domains", () => {
     "https://notthreads.net/",
     "https://notthreads.com/",
     "https://notsnapchat.com/",
-    "https://notmessenger.com/"
+    "https://notmessenger.com/",
+    "https://studio.youtube.com/",
+    "https://business.facebook.com/",
+    "https://player.twitch.tv/",
+    "https://docs.google.com/document/u/0/"
   ];
   for (const url of lookAlikes) assert.equal(U.getSiteFromUrl(url), null, url);
-  assert.equal(U.getSiteFromUrl("https://sub.instagram.com/"), "instagram");
-  assert.equal(U.getSiteFromUrl("https://sub.youtube.com/"), "youtube");
+  assert.equal(U.getSiteFromUrl("https://sub.instagram.com/"), null);
+  assert.equal(U.getSiteFromUrl("https://sub.youtube.com/"), null);
 });
 
 test("YouTube video IDs resolve only from supported watch surfaces", () => {
@@ -224,4 +260,35 @@ test("YouTube approvals retain normal and friction playback modes", () => {
 
   const legacy = U.normalizeYouTubeFocusApprovals({ lockUntil: settings.lockUntil, videoIds: ["dQw4w9WgXcQ"] });
   assert.equal(U.getYouTubeFocusApprovalMode(legacy, "dQw4w9WgXcQ"), "normal");
+});
+
+test("lock repair restores only weaker fields and preserves strengthening changes", () => {
+  const now = Date.now();
+  const baseline = U.mergeSettings({
+    lockUntil: now + 60_000,
+    sites: { reddit: true },
+    features: { monochrome: 75, stripMedia: false },
+    siteSettings: { instagram: { hideReels: true } }
+  });
+  const current = U.mergeSettings({
+    ...baseline,
+    enabled: false,
+    lockUntil: 0,
+    bypassUntil: now + 5_000,
+    sites: { ...baseline.sites, reddit: false },
+    features: { ...baseline.features, monochrome: 100, stripMedia: true },
+    siteSettings: {
+      ...baseline.siteSettings,
+      instagram: { ...baseline.siteSettings.instagram, hideReels: false }
+    }
+  });
+  const repaired = U.repairLockedSettings(baseline, current);
+
+  assert.equal(repaired.enabled, true);
+  assert.equal(repaired.lockUntil, baseline.lockUntil);
+  assert.equal(repaired.sites.reddit, true);
+  assert.equal(repaired.features.monochrome, 100);
+  assert.equal(repaired.features.stripMedia, true);
+  assert.equal(repaired.siteSettings.instagram.hideReels, true);
+  assert.equal(repaired.bypassUntil, current.bypassUntil);
 });

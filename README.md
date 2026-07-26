@@ -6,7 +6,7 @@ blokamine keeps supported social, media, and discovery sites usable while making
 
 - Media is 75% desaturated.
 - Reward counts and notification badges are hidden.
-- Stronger friction—blur, upside-down media, and media removal—is opt-in.
+- Stronger friction—blur, upside-down media, feed-media removal, and profile-image hiding—is opt-in.
 - Comment threads and live chat are hidden by default on Instagram, YouTube, TikTok, and Twitch; Reddit comments stay visible.
 - Social and entertainment sites are enabled by default.
 - Work and messaging sites (Discord, Google Search, LinkedIn, WhatsApp, and Messenger) are off by default.
@@ -17,7 +17,7 @@ There is no feed interception, artificial loading boundary, or scroll manipulati
 
 Outside Focus Lock, an opened long-form YouTube video stays normal by default. You can enable **Make opened videos less rewarding** to apply the same media treatment to the active player. Search results, thumbnails, recommendations, and Shorts keep their configured visual treatment. When that option is enabled, opening a long-form video pauses behind a quick reflection step: choose normal playback for educational viewing, keep your configured friction, or leave the video paused. Focus Lock uses the same choices and scopes them to the current lock. A non-Focus choice lasts for that video during the current page session.
 
-The extension popup provides Focus Lock and a one-time ten-minute break. A break requires entering the displayed six-character code, and the break cooldown is configured in Settings.
+The extension popup provides Focus Lock and a one-time ten-minute break across supported sites. A break requires entering the displayed six-character code, and the break cooldown is configured in Settings.
 
 ## Privacy
 
@@ -29,4 +29,4 @@ blokamine stores settings and Focus Lock state locally in Chrome. It does not co
 2. Enable **Developer mode**.
 3. Select **Load unpacked**.
 4. Choose the folder containing `manifest.json`.
-5. Open **Settings**, then refresh supported tabs after edits.
+5. Open **Settings** to choose where blokamine applies. Settings changes are applied to supported tabs automatically; refresh a tab only after reloading updated extension files.

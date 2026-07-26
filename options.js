@@ -301,7 +301,7 @@
 
     window.clearTimeout(lockTimer);
     lockTimer = locked
-      ? window.setTimeout(readSettings, Math.min(2147483647, Math.max(50, savedSettings.lockUntil - Date.now() + 50)))
+      ? window.setTimeout(() => readSettings().catch(() => showToast("Settings could not be refreshed.")), Math.min(2147483647, Math.max(50, savedSettings.lockUntil - Date.now() + 50)))
       : null;
   }
 
@@ -332,9 +332,20 @@
 
   async function saveDraft({ activateLock = false } = {}) {
     if (!draftSettings || !savedSettings) return false;
-    const locked = U.isLocked(savedSettings);
+    const current = U.mergeSettings(await chrome.storage.local.get(U.DEFAULT_SETTINGS));
+    if (settingsKey(current) !== settingsKey(savedSettings)) {
+      expectedStorage = null;
+      savedSettings = current;
+      draftSettings = U.mergeSettings(current);
+      dirty = false;
+      render();
+      showToast("Settings changed elsewhere; your draft was reset.");
+      return false;
+    }
+
+    const locked = U.isLocked(current);
     const next = U.mergeSettings(draftSettings);
-    if (locked && U.isWeakeningChange(savedSettings, next)) {
+    if (locked && U.isWeakeningChange(current, next)) {
       render();
       return false;
     }
@@ -360,18 +371,25 @@
       next.lockUntil = Date.now() + hours * 60 * 60 * 1000;
     } else {
       // The normal Save button never changes an already-active lock.
-      next.lockUntil = savedSettings.lockUntil;
+      next.lockUntil = current.lockUntil;
     }
 
-    if (locked && U.isWeakeningChange(savedSettings, next)) {
+    const patch = U.createSettingsPatch(current, next);
+    const normalized = U.applySettingsPatch(current, patch);
+    const validationCandidate = {
+      ...normalized,
+      enabled: Object.hasOwn(patch, "enabled") ? Boolean(patch.enabled) : normalized.enabled
+    };
+    if (locked && U.isWeakeningChange(current, validationCandidate)) {
       render();
       return false;
     }
 
-    const normalized = U.mergeSettings(next);
+    const storagePatch = U.createStoragePatch(current, normalized);
+    if (activateLock) storagePatch[U.LOCK_BASELINE_KEY] = normalized;
     expectedStorage = settingsKey(normalized);
     try {
-      await chrome.storage.local.set(normalized);
+      await chrome.storage.local.set(storagePatch);
     } catch (_) {
       expectedStorage = null;
       showToast("Changes could not be saved.");
@@ -426,8 +444,8 @@
     for (const input of $$('[data-site-setting]')) input.addEventListener("change", () => setSiteSetting(input));
     $("#lock-duration").addEventListener("change", () => render());
     $("#bypass-cooldown").addEventListener("change", (event) => setBypassCooldown(event.target));
-    $("#lock-button").addEventListener("click", () => saveDraft({ activateLock: true }));
-    $("#save-button").addEventListener("click", () => saveDraft());
+    $("#lock-button").addEventListener("click", () => saveDraft({ activateLock: true }).catch(() => showToast("Changes could not be saved.")));
+    $("#save-button").addEventListener("click", () => saveDraft().catch(() => showToast("Changes could not be saved.")));
     window.addEventListener("beforeunload", (event) => {
       if (!dirty) return;
       event.preventDefault();

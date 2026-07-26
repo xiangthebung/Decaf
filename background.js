@@ -20,14 +20,42 @@ const ACTION_ICONS = {
     128: "icons/icon-locked128.png"
   }
 };
-let iconTimer = null;
+const LOCK_EXPIRY_ALARM = "blokamine-focus-lock-expiry";
 
 async function syncActionIcon() {
   try {
-    const settings = UnaddictifySettings.mergeSettings(
-      await chrome.storage.local.get(UnaddictifySettings.DEFAULT_SETTINGS)
-    );
-    const locked = UnaddictifySettings.isLocked(settings);
+    const stored = await chrome.storage.local.get({
+      ...UnaddictifySettings.DEFAULT_SETTINGS,
+      [UnaddictifySettings.LOCK_BASELINE_KEY]: null
+    });
+    let settings = UnaddictifySettings.mergeSettings(stored);
+    let locked = UnaddictifySettings.isLocked(settings);
+    const baseline = stored[UnaddictifySettings.LOCK_BASELINE_KEY];
+    const baselineSettings = baseline ? UnaddictifySettings.mergeSettings(baseline) : null;
+
+    // The baseline is authoritative while its own lock is still valid. This
+    // also repairs a stale popup/options writer that briefly persisted an old
+    // lockUntil value before the service worker observed the update.
+    if (baselineSettings && UnaddictifySettings.isLocked(baselineSettings) &&
+      (!locked || UnaddictifySettings.isWeakeningChange(baselineSettings, settings))) {
+      const repaired = UnaddictifySettings.repairLockedSettings(baselineSettings, settings);
+      settings = repaired;
+      locked = true;
+      await chrome.storage.local.set({
+        ...UnaddictifySettings.createStoragePatch(
+          UnaddictifySettings.mergeSettings(stored),
+          repaired
+        ),
+        [UnaddictifySettings.LOCK_BASELINE_KEY]: baselineSettings
+      });
+    } else if (!locked && baseline) {
+      await chrome.storage.local.remove(UnaddictifySettings.LOCK_BASELINE_KEY);
+    }
+
+    if (locked && settings.enabled !== true) {
+      await chrome.storage.local.set({ enabled: true });
+      settings.enabled = true;
+    }
     const state = locked && settings.enabled ? "locked" : settings.enabled ? "active" : "off";
     await chrome.action.setIcon({ path: ACTION_ICONS[state] });
     await chrome.action.setTitle({
@@ -37,10 +65,10 @@ async function syncActionIcon() {
           ? "blokamine — Active"
           : "blokamine — Off"
     });
-    if (iconTimer) clearTimeout(iconTimer);
-    iconTimer = locked
-      ? setTimeout(syncActionIcon, Math.min(2147483647, Math.max(100, settings.lockUntil - Date.now() + 100)))
-      : null;
+    await chrome.alarms.clear(LOCK_EXPIRY_ALARM);
+    if (locked) {
+      await chrome.alarms.create(LOCK_EXPIRY_ALARM, { when: settings.lockUntil + 100 });
+    }
   } catch (_) {
     // The popup and settings page still provide the current state.
   }
@@ -48,5 +76,8 @@ async function syncActionIcon() {
 
 chrome.runtime.onInstalled.addListener(syncActionIcon);
 chrome.runtime.onStartup.addListener(syncActionIcon);
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === LOCK_EXPIRY_ALARM) syncActionIcon();
+});
 chrome.storage.onChanged.addListener(() => syncActionIcon());
 syncActionIcon();

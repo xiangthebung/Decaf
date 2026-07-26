@@ -47,17 +47,14 @@ html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*=
 }
 
 /* LinkedIn's feed markup changes often, but its post media consistently uses
-   these feed wrappers or LinkedIn-hosted media URLs. Keep a direct fallback in
-   addition to the classes added by the content script. */
+   these feed wrappers. Keep a direct fallback in addition to the classes added
+   by the content script. */
 html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin .feed-shared-update-v2 img,
 html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin .feed-shared-update-v2 video,
 html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="feed-shared" i] img,
 html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="feed-shared" i] video,
 html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin img[src*="licdn.com" i],
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin img[srcset*="licdn.com" i],
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin img[src*="linkedin.com/dms/image" i] {
+html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] video {
   filter: grayscale(var(--unaddictify-monochrome)) !important;
 }
 
@@ -107,10 +104,7 @@ html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin 
 html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="feed-shared" i] img,
 html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="feed-shared" i] video,
 html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin img[src*="licdn.com" i],
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin img[srcset*="licdn.com" i],
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin img[src*="linkedin.com/dms/image" i] {
+html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] video {
   transform: rotate(180deg) !important;
   transform-origin: center center !important;
 }
@@ -146,11 +140,12 @@ html.unaddictify-active.unaddictify-blur-thumbnails .unaddictify-thumbnail {
   filter: grayscale(var(--unaddictify-monochrome)) blur(4px) !important;
 }
 
-/* Remove only content media that the script has identified. Page chrome,
-   avatars, logos, and controls remain available. */
+/* Remove only content media that the script has identified while preserving
+   the host card's layout, so feed items do not jump as media is scanned. */
 html.unaddictify-active.unaddictify-strip-media .unaddictify-media,
 html.unaddictify-active.unaddictify-strip-media .unaddictify-media-surface {
-  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 /* An approved YouTube video is restored without reopening nearby recommendations. */
@@ -392,6 +387,17 @@ html.unaddictify-active.unaddictify-site-whatsapp.unaddictify-whatsapp-hide-stat
 html.unaddictify-active.unaddictify-site-whatsapp.unaddictify-whatsapp-hide-channels [data-testid="channels"],
 html.unaddictify-active.unaddictify-site-messenger.unaddictify-messenger-hide-stories [data-testid*="story" i] {
   display: none !important;
+}
+
+html.unaddictify-active.unaddictify-hide-profile-media .unaddictify-profile-media {
+  display: none !important;
+}
+
+/* Profile images are kept available by default. The explicit profile setting
+   can hide them without treating them as feed media or transforming them. */
+html.unaddictify-active .unaddictify-profile-media.unaddictify-profile-media.unaddictify-profile-media {
+  filter: none !important;
+  transform: none !important;
 }
 
 html:not(.unaddictify-active) .unaddictify-media,

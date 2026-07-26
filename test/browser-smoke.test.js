@@ -25,6 +25,9 @@ const FIXTURE = `<!doctype html>
 <html>
   <head><title>Educational test video - YouTube</title></head>
   <body>
+    <button id="focus-target" type="button">Focus target</button>
+    <img id="profile-avatar" alt="Profile picture" src="data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=" />
+    <article><span id="engagement-label">watch this</span></article>
     <div id="movie_player"><video></video></div>
     <div id="title"><h1><yt-formatted-string>Educational test video</yt-formatted-string></h1></div>
   </body>
@@ -53,6 +56,10 @@ async function setSmokeSettings(page) {
     await chrome.storage.local.set({
       enabled: true,
       sites: { youtube: true },
+      features: {
+        hideProfileMedia: true,
+        hideEngagementCounts: true
+      },
       lockUntil: Date.now() + 60 * 60 * 1000,
       siteSettings: {
         youtube: {
@@ -99,10 +106,27 @@ test("YouTube Focus Lock choices work in a browser", { skip: skipReason }, async
       "Keep it less rewarding",
       "Keep it paused"
     ]);
+    await page.locator("#profile-avatar.unaddictify-profile-media").waitFor();
+    assert.equal(await page.locator("#profile-avatar").evaluate((image) => image.classList.contains("unaddictify-media")), true);
+    await page.evaluate(() => {
+      document.querySelector("#engagement-label").textContent = "123 likes";
+    });
+    await page.waitForFunction(() => document.querySelector("#engagement-label")?.textContent === "— likes");
 
     await page.getByRole("button", { name: "Keep it paused" }).click();
     assert.equal(await gate.isVisible(), true);
     assert.equal(await page.getByRole("button", { name: "Video will stay paused" }).isDisabled(), true);
+
+    await page.locator("#focus-target").focus();
+    await page.evaluate(() => {
+      history.pushState({}, "", "/watch?v=focus12345");
+      window.dispatchEvent(new Event("unaddictify-location-change"));
+    });
+    const routedGate = page.locator(".unaddictify-youtube-focus-gate");
+    await routedGate.waitFor({ state: "visible" });
+    await page.getByRole("button", { name: "Yes — play normally" }).click();
+    await routedGate.waitFor({ state: "detached" });
+    assert.equal(await page.evaluate(() => document.activeElement?.id), "focus-target");
 
     await page.goto(videoUrl("friction123"));
     await page.locator(".unaddictify-youtube-focus-gate").waitFor({ state: "visible" });
