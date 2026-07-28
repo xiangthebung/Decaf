@@ -1,407 +1,703 @@
-/* The host site's fonts, layout, controls, navigation, and scrolling remain untouched. */
+/**
+ * Decaf — host page treatment.
+ *
+ * Root classes are set by content.js:
+ *   .decaf-boot          a feed route is resolving; keep the first paint neutral
+ *   .decaf-on            Decaf is active on this site
+ *   .decaf-site-KEY      which supported site this is
+ *   .decaf-feed          this route is an endless, algorithmic surface
+ *   .decaf-media         this route is one thing the person opened on purpose
+ *   .decaf-hide-feed     the feed on this route is paused right now
+ *   .decaf-calm          "Pause feeds" is on, so recommendation rails go too
+ *   .decaf-hide-comments comment and reply threads are hidden
+ *   .decaf-upside-down   media is turned over
+ *   .decaf-hide-badges   notification counts are removed rather than muted
+ *   .decaf-color         full color was granted for this one page
+ *
+ * Route detection lives in core.js, and the feed containers hidden below are the
+ * `feedSelectors` from the same table — a test keeps the two in step. Everything
+ * else here is presentation only.
+ *
+ * Decaf's own elements live in the page (not a shadow root) so that these styles,
+ * which Chrome injects for the extension, are the only ones that can reach them.
+ */
 
-/* Settings are read asynchronously. The pending state is intentionally
-   neutral so users never see a default-sabotage flash before their settings
-   are available. */
+/* ---------------------------------------------------------------- boot ----- */
 
-html.unaddictify-active.unaddictify-monochrome .unaddictify-media,
-html.unaddictify-active.unaddictify-monochrome .unaddictify-media-surface {
-  filter: grayscale(var(--unaddictify-monochrome)) !important;
+html.decaf-boot {
+  background: #faf8f5 !important;
 }
 
-/* CSS covers common cards immediately; the content script adds classes to
-   less predictable media after the host has finished its own render. */
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-instagram article img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-instagram article video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit article img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit article video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit shreddit-post img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-reddit shreddit-post video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-rich-item-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-rich-item-renderer video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-video-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-video-renderer video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-compact-video-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-compact-video-renderer video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-item-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-video-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-shorts img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] video {
-  filter: grayscale(var(--unaddictify-monochrome)) !important;
-}
-
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="attachment" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="attachment" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="visualMedia" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="visualMedia" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="imageWrapper" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="imageWrapper" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="embedMedia" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-discord [class*="embedMedia" i] video {
-  filter: grayscale(var(--unaddictify-monochrome)) !important;
-}
-
-/* LinkedIn's feed markup changes often, but its post media consistently uses
-   these feed wrappers. Keep a direct fallback in addition to the classes added
-   by the content script. */
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin .feed-shared-update-v2 img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin .feed-shared-update-v2 video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="feed-shared" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="feed-shared" i] video,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-linkedin [class*="update-components" i] video {
-  filter: grayscale(var(--unaddictify-monochrome)) !important;
-}
-
-html.unaddictify-active.unaddictify-upside-down-media .unaddictify-media,
-html.unaddictify-active.unaddictify-upside-down-media .unaddictify-media-surface {
-  transform: rotate(180deg) !important;
-  transform-origin: center center !important;
-}
-
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-instagram article img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-instagram article video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit article img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit article video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit shreddit-post img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-reddit shreddit-post video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-rich-item-renderer img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-rich-item-renderer video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-video-renderer img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-video-renderer video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-item-renderer img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-video-renderer img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-shorts img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="attachment" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="visualMedia" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] video {
-  transform: rotate(180deg) !important;
-  transform-origin: center center !important;
-}
-
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="attachment" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="attachment" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="visualMedia" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="visualMedia" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="imageWrapper" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="imageWrapper" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="embedMedia" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-discord [class*="embedMedia" i] video {
-  transform: rotate(180deg) !important;
-  transform-origin: center center !important;
-}
-
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin .feed-shared-update-v2 img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin .feed-shared-update-v2 video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="feed-shared" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="feed-shared" i] video,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-linkedin [class*="update-components" i] video {
-  transform: rotate(180deg) !important;
-  transform-origin: center center !important;
-}
-
-/* YouTube's player poster is a background surface rather than an <img>. */
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube .ytp-cued-thumbnail-overlay-image,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube .ytp-thumbnail-overlay-image {
-  filter: grayscale(var(--unaddictify-monochrome)) !important;
-}
-
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube .ytp-cued-thumbnail-overlay-image,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube .ytp-thumbnail-overlay-image {
-  transform: rotate(180deg) !important;
-  transform-origin: center center !important;
-}
-
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube a[href*="/shorts/"] img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-item-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-reel-video-renderer img,
-html.unaddictify-active.unaddictify-monochrome.unaddictify-site-youtube ytd-shorts img {
-  filter: grayscale(var(--unaddictify-monochrome)) !important;
-}
-
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube a[href*="/shorts/"] img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-item-renderer img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-reel-video-renderer img,
-html.unaddictify-active.unaddictify-upside-down-media.unaddictify-site-youtube ytd-shorts img {
-  transform: rotate(180deg) !important;
-  transform-origin: center center !important;
-}
-
-html.unaddictify-active.unaddictify-blur-thumbnails .unaddictify-thumbnail {
-  filter: grayscale(var(--unaddictify-monochrome)) blur(4px) !important;
-}
-
-/* Remove only content media that the script has identified while preserving
-   the host card's layout, so feed items do not jump as media is scanned. */
-html.unaddictify-active.unaddictify-strip-media .unaddictify-media,
-html.unaddictify-active.unaddictify-strip-media .unaddictify-media-surface {
+html.decaf-boot body {
   visibility: hidden !important;
-  pointer-events: none !important;
 }
 
-/* An approved YouTube video is restored without reopening nearby recommendations. */
-html.unaddictify-active.unaddictify-site-youtube #movie_player.unaddictify-approved-player video {
-  display: block !important;
-  visibility: visible !important;
-  opacity: 1 !important;
+@media (prefers-color-scheme: dark) {
+  html.decaf-boot {
+    background: #131211 !important;
+  }
+}
+
+/* ------------------------------------------------------- quiet visuals ----- */
+
+/* Media loses its color. Nothing is hidden, nothing moves, the page still scrolls. */
+html.decaf-on img,
+html.decaf-on video,
+html.decaf-on canvas,
+html.decaf-on [style*="background-image"] {
+  filter: grayscale(1) contrast(0.96) !important;
+}
+
+/* Drawings count as media too: LinkedIn's reaction faces and a verified tick are
+   inline SVG with the colour written into them. Only inside the content, so the
+   site's own icons - already one colour - are left unfiltered. */
+html.decaf-on :is(article, main, [role="main"], [role="feed"], [role="article"], #contents, #primary) svg {
+  filter: grayscale(1) !important;
+}
+
+/* Opt-in extra friction: turn the content over, but never the site's own chrome. */
+html.decaf-upside-down :is(article, main, [role="main"], [role="feed"], #contents, #primary) :is(img, video) {
+  transform: rotate(180deg) !important;
+}
+
+/* Full color, granted for this page only, for the one thing being watched. */
+html.decaf-color.decaf-site-youtube #movie_player video,
+html.decaf-color.decaf-site-youtube #movie_player .html5-video-container,
+html.decaf-color.decaf-site-youtube .html5-video-player video,
+html.decaf-color.decaf-site-twitch video,
+html.decaf-color.decaf-site-instagram main article img,
+html.decaf-color.decaf-site-instagram main article video,
+html.decaf-color.decaf-site-tiktok video,
+html.decaf-color.decaf-site-x [data-testid="tweetPhoto"] img,
+html.decaf-color.decaf-site-x article video,
+html.decaf-color.decaf-site-x video,
+html.decaf-color.decaf-site-reddit shreddit-post img,
+html.decaf-color.decaf-site-reddit [slot="post-media-container"] img,
+html.decaf-color.decaf-site-reddit [data-test-id="post-content"] img,
+html.decaf-color.decaf-site-reddit video,
+html.decaf-color.decaf-site-facebook [data-visualcompletion="media-vc-image"],
+html.decaf-color.decaf-site-facebook video,
+html.decaf-color.decaf-site-threads main video,
+html.decaf-color.decaf-site-threads main img[srcset],
+html.decaf-color.decaf-site-bluesky img[src*="feed_fullsize"],
+html.decaf-color.decaf-site-bluesky video,
+html.decaf-color.decaf-site-pinterest [data-test-id*="closeup" i] img,
+html.decaf-color.decaf-site-pinterest video,
+html.decaf-color.decaf-site-linkedin [class*="update-components-image"] img,
+html.decaf-color.decaf-site-linkedin video,
+html.decaf-color.decaf-site-googlenews main img {
   filter: none !important;
   transform: none !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube #movie_player.unaddictify-approved-player .ytp-cued-thumbnail-overlay-image,
-html.unaddictify-active.unaddictify-site-youtube #movie_player.unaddictify-approved-player .ytp-thumbnail-overlay-image {
-  filter: none !important;
-  transform: none !important;
+/* ------------------------------------------------- counts and badges ----- */
+
+/* Reward counts are replaced with a dash by content.js. Notification badges keep
+   their number — you should not miss a message — but lose the urgent red. */
+html.decaf-on .decaf-badge {
+  filter: grayscale(1) !important;
+  opacity: 0.65 !important;
+  box-shadow: none !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate {
-  position: absolute !important;
-  inset: 0 !important;
-  z-index: 10000 !important;
-  display: grid !important;
-  place-items: center !important;
+html.decaf-hide-badges .decaf-badge {
+  display: none !important;
+}
+
+/* ------------------------------------------------------- paused feeds ----- */
+/*
+ * A paused feed is emptied, never removed. Hiding the container itself would take
+ * it out of the site's own grid or flex layout and everything around it — the
+ * sidebars especially — would move. So its children are hidden instead, apart
+ * from Decaf's notice and whatever contains it.
+ */
+
+html.decaf-hide-feed.decaf-site-youtube ytd-browse[page-subtype='home'] ytd-rich-grid-renderer > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-youtube ytd-shorts > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-youtube ytd-browse[page-subtype='trending'] #contents > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-youtube ytd-browse[page-subtype='gaming'] #contents > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-youtube ytd-rich-grid-renderer > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-instagram main[role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-instagram main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-instagram [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-instagram section > div > div > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-tiktok #main-content-homepage_hot > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-tiktok #main-content-explore_page > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-tiktok #main-content-live > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-tiktok main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-x div[aria-label^='Timeline'][role='region'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-x [data-testid='primaryColumn'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit shreddit-feed > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit #siteTable > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit .ListingLayout-outerContainer > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit main#main-content > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit #main-content > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-reddit main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-facebook [role='feed'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-facebook [data-pagelet='MainFeed'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-facebook [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-threads main[role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-threads main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-threads div:has(> [data-pressable-container]) > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-bluesky main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-bluesky [data-testid='homeScreenFeedTabs'] ~ div > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-bluesky [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-twitch main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-twitch [data-a-target='directory-container'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-twitch [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-pinterest [data-test-id='homefeed-feed'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-pinterest div[data-test-id='homefeed'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-pinterest [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-pinterest main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-linkedin main .scaffold-finite-scroll > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-linkedin main[aria-label='Main Feed'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-linkedin main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-linkedin [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-googlenews main c-wiz > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-googlenews main > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed.decaf-site-googlenews [role='main'] > *:not(.decaf-notice):not(:has(.decaf-notice)),
+html.decaf-hide-feed .decaf-feed-container > *:not(.decaf-notice):not(:has(.decaf-notice)) {
+  display: none !important;
+}
+
+/*
+ * Nothing between the notice and the page may clip it. A container sized for a
+ * feed can be shorter than the card in a small window, and the card would be cut
+ * off at the top with no way to scroll to it.
+ */
+html.decaf-hide-feed .decaf-feed-path {
+  overflow: visible !important;
+  max-height: none !important;
+  contain: none !important;
+}
+
+/*
+ * The container now holds nothing but the notice, so its own inner layout (a
+ * grid of cards, a masonry, a fixed height, a horizontal scroller) must not get
+ * a say in how the notice is placed.
+ */
+html.decaf-hide-feed .decaf-feed-host {
+  /* flow-root, not block: the card's own margin then stays inside the column
+     instead of collapsing out of it and nudging the column down the page. */
+  display: flow-root !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: visible !important;
+  contain: none !important;
+  background-image: none !important;
+  place-content: start !important;
+  columns: auto !important;
+}
+
+/* --------------------------------------------------- comments and replies ----- */
+/* Best effort per site: the thread goes, the thing you opened stays. */
+
+html.decaf-hide-comments.decaf-site-youtube #comments,
+html.decaf-hide-comments.decaf-site-youtube ytd-comments,
+html.decaf-hide-comments.decaf-site-youtube ytm-comment-section-renderer,
+html.decaf-hide-comments.decaf-site-reddit shreddit-comment-tree,
+html.decaf-hide-comments.decaf-site-reddit #comment-tree,
+html.decaf-hide-comments.decaf-site-reddit .commentarea,
+html.decaf-hide-comments.decaf-site-reddit faceplate-batch > shreddit-comment,
+html.decaf-hide-comments.decaf-site-tiktok [data-e2e='comment-list'],
+html.decaf-hide-comments.decaf-site-tiktok [data-e2e='comment-level-1'],
+html.decaf-hide-comments.decaf-site-tiktok [data-e2e='browse-comment'],
+html.decaf-hide-comments.decaf-site-instagram main article ul > li + li,
+html.decaf-hide-comments.decaf-site-instagram main article [aria-label='Add a comment…'],
+html.decaf-hide-comments.decaf-site-instagram main form:has(textarea[aria-label*='comment' i]),
+html.decaf-hide-comments.decaf-site-instagram main textarea[aria-label*='comment' i],
+/* The caption is the first block in that panel; the comments follow it. */
+html.decaf-hide-comments .decaf-comment-list > * > *:nth-child(n+2),
+html.decaf-hide-comments.decaf-site-x div[aria-label^='Timeline: Conversation'] > div > div:nth-child(n+2),
+html.decaf-hide-comments.decaf-site-facebook [role='article'] [role='article'],
+html.decaf-hide-comments.decaf-site-linkedin .comments-comments-list,
+html.decaf-hide-comments.decaf-site-linkedin .comments-comment-list__container,
+html.decaf-hide-comments.decaf-site-twitch #live-chat-frame,
+html.decaf-hide-comments.decaf-site-twitch [data-a-target='chat-shell'],
+html.decaf-hide-comments.decaf-site-twitch section[aria-label*='Chat' i] {
+  display: none !important;
+}
+
+/* --------------------------------------------- recommendation rails ----- */
+/* Only with "Pause feeds" on: the surfaces whose job is the next item. */
+
+/* YouTube: up-next rail, end-screen cards, Shorts shelves and entry points. */
+html.decaf-calm.decaf-site-youtube #related,
+html.decaf-calm.decaf-site-youtube ytd-watch-next-secondary-results-renderer,
+/* A Mix is a playlist YouTube writes for you, so its panel is a rail. A playlist
+   someone made and opened on purpose keeps its panel: only radio ids start RD. */
+html.decaf-calm.decaf-site-youtube ytd-playlist-panel-renderer[playlist-type^="RD"],
+html.decaf-calm.decaf-site-youtube .ytp-endscreen-content,
+html.decaf-calm.decaf-site-youtube .ytp-ce-element,
+html.decaf-calm.decaf-site-youtube .ytp-pause-overlay,
+html.decaf-calm.decaf-site-youtube ytd-feed-filter-chip-bar-renderer,
+html.decaf-calm.decaf-site-youtube ytd-reel-shelf-renderer,
+html.decaf-calm.decaf-site-youtube ytm-reel-shelf-renderer,
+html.decaf-calm.decaf-site-youtube ytd-rich-shelf-renderer[is-shorts],
+html.decaf-calm.decaf-site-youtube ytd-guide-entry-renderer:has(a[href^="/shorts"]),
+html.decaf-calm.decaf-site-youtube ytd-mini-guide-entry-renderer:has(a[href^="/shorts"]),
+html.decaf-calm.decaf-site-youtube ytd-guide-entry-renderer:has(a[href="/feed/trending"]),
+html.decaf-calm.decaf-site-youtube ytd-guide-entry-renderer:has(a[href="/feed/explore"]) {
+  display: none !important;
+}
+
+/* Instagram: doorways back into Explore and Reels. */
+html.decaf-calm.decaf-site-instagram a[href="/explore/"],
+html.decaf-calm.decaf-site-instagram a[href="/reels/"],
+html.decaf-calm.decaf-site-instagram a[href^="/explore/people"] {
+  display: none !important;
+}
+
+/* TikTok: For You, Explore, Live and friend suggestions. */
+html.decaf-calm.decaf-site-tiktok a[href="/explore"],
+html.decaf-calm.decaf-site-tiktok a[href="/live"],
+html.decaf-calm.decaf-site-tiktok [data-e2e="nav-foryou"],
+html.decaf-calm.decaf-site-tiktok [data-e2e="suggested-accounts"] {
+  display: none !important;
+}
+
+/* X: Explore, and the sidebar modules — trends, Today's News, who to follow.
+   Each module is targeted through its own contents so the sidebar's search box,
+   which shares their container, keeps working. */
+html.decaf-calm.decaf-site-x a[href="/explore"],
+html.decaf-calm.decaf-site-x div[aria-label^="Timeline: Trending"],
+html.decaf-calm.decaf-site-x aside[aria-label*="Who to follow"],
+html.decaf-calm.decaf-site-x aside[aria-label*="Relevant people"],
+html.decaf-calm.decaf-site-x [data-testid="sidebarColumn"] section[role="region"]:has([data-testid="trend"]),
+html.decaf-calm.decaf-site-x [data-testid="sidebarColumn"] div:has(> [data-testid="news_sidebar"]),
+html.decaf-calm.decaf-site-x [data-testid="sidebarColumn"] aside[role="complementary"]:has([data-testid="UserCell"]),
+html.decaf-calm.decaf-site-x [data-testid="sidebarColumn"] [data-testid="whoToFollowSspAd"] {
+  display: none !important;
+}
+
+/* Reddit: Popular and All entry points, plus post recommendations. */
+html.decaf-calm.decaf-site-reddit a[href="/r/popular/"],
+html.decaf-calm.decaf-site-reddit a[href="/r/all/"],
+html.decaf-calm.decaf-site-reddit shreddit-post-recommendations,
+html.decaf-calm.decaf-site-reddit [data-testid="recommended-posts"] {
+  display: none !important;
+}
+
+/* Facebook: Reels and Watch entry points. */
+html.decaf-calm.decaf-site-facebook a[href^="/reel"],
+html.decaf-calm.decaf-site-facebook a[href^="/watch"],
+html.decaf-calm.decaf-site-facebook [aria-label="Reels"],
+html.decaf-calm.decaf-site-facebook [aria-label="Watch"] {
+  display: none !important;
+}
+
+/* Twitch: browse and recommended channels. */
+html.decaf-calm.decaf-site-twitch a[href="/directory"],
+html.decaf-calm.decaf-site-twitch [aria-label*="Recommended" i],
+html.decaf-calm.decaf-site-twitch [data-a-target="recommended-channels"] {
+  display: none !important;
+}
+
+/* Pinterest: related pins and more ideas. */
+html.decaf-calm.decaf-site-pinterest [data-test-id="related-pins"],
+html.decaf-calm.decaf-site-pinterest [data-test-id="more-ideas"],
+html.decaf-calm.decaf-site-pinterest [data-test-id="closeup-related-modules"] {
+  display: none !important;
+}
+
+/* LinkedIn: news module and follow suggestions. */
+html.decaf-calm.decaf-site-linkedin #feed-news-module,
+html.decaf-calm.decaf-site-linkedin .news-module,
+html.decaf-calm.decaf-site-linkedin .feed-follows-module,
+html.decaf-calm.decaf-site-linkedin [data-view-name="feed-follows-module"] {
+  display: none !important;
+}
+
+/* Bluesky: the Discover feed switcher, and the right rail's discovery cards -
+   feed picker, "follow 10 people", Trending. Bluesky ships no hooks at all
+   there, so the cards are told apart by what they hold: the one with the search
+   box stays, and so does the last one, which is the site's own footer links. */
+html.decaf-calm.decaf-site-bluesky a[href="/feeds"],
+html.decaf-calm.decaf-site-bluesky main ~ div > div:not(:has(input)):not(:last-child) {
+  display: none !important;
+}
+
+/* ------------------------------------------------------ Decaf's notice ----- */
+/*
+ * These elements sit inside someone else's page, so every rule here is written
+ * to survive it:
+ *   - absolute units only. A host that sets `html { font-size: 10px }` (YouTube
+ *     does) would otherwise shrink anything sized in rem.
+ *   - one reset for the whole subtree, before the rules that style it, so an
+ *     inherited float, transform or line-height cannot rearrange the card.
+ *   - explicit flex and grid placement, because the parent may be either.
+ */
+
+html.decaf-on .decaf-notice *,
+html.decaf-on .decaf-notice *::before,
+html.decaf-on .decaf-notice *::after {
   box-sizing: border-box !important;
-  padding: 28px !important;
-  overflow: auto !important;
-  background: rgba(16, 18, 17, .94) !important;
-  color: #f7f8f6 !important;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  outline: none !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: none !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  float: none !important;
+  clear: none !important;
+  vertical-align: baseline !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif !important;
+  font-style: normal !important;
+  font-variant: normal !important;
+  font-stretch: normal !important;
+  font-feature-settings: normal !important;
+  line-height: 1.45 !important;
+  letter-spacing: normal !important;
+  word-spacing: normal !important;
   text-align: left !important;
+  text-decoration: none !important;
+  text-indent: 0 !important;
+  text-shadow: none !important;
+  text-transform: none !important;
+  white-space: normal !important;
+  word-break: normal !important;
+  overflow-wrap: break-word !important;
+  direction: ltr !important;
+  writing-mode: horizontal-tb !important;
+  list-style: none !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  filter: none !important;
+  backdrop-filter: none !important;
+  mix-blend-mode: normal !important;
+  isolation: auto !important;
+  transition: none !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  aspect-ratio: auto !important;
+  zoom: 1 !important;
+  pointer-events: auto !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate *,
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate *::before,
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate *::after {
+html.decaf-on .decaf-notice {
   box-sizing: border-box !important;
+  display: block !important;
+  position: relative !important;
+  inset: auto !important;
+  float: none !important;
+  clear: both !important;
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 544px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+  margin: 32px auto !important;
+  padding: 24px !important;
+  /* If the parent turns out to be a flex or grid container. */
+  flex: 0 1 auto !important;
+  order: 0 !important;
+  align-self: start !important;
+  justify-self: center !important;
+  grid-column: 1 / -1 !important;
+  grid-row: auto !important;
+  border: 1px solid #e7e0d5 !important;
+  border-radius: 16px !important;
+  background: #fffefc !important;
+  background-image: none !important;
+  color: #1d1b19 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif !important;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+  line-height: 1.45 !important;
+  letter-spacing: normal !important;
+  text-align: left !important;
+  overflow: visible !important;
+  box-shadow: none !important;
+  transform: none !important;
+  rotate: none !important;
+  scale: none !important;
+  translate: none !important;
+  filter: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  transition: none !important;
+  contain: none !important;
+  content-visibility: visible !important;
+  z-index: 2 !important;
+  /* Room for a sticky site header when the card is scrolled into view. */
+  scroll-margin: 88px 0 24px !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-sheet {
-  width: min(440px, 100%) !important;
-  margin: auto !important;
+/* Stepped clear of a fixed overlay that would paint over the card's top edge. */
+html.decaf-on .decaf-notice.decaf-drop-1 {
+  margin-top: 56px !important;
+}
+
+html.decaf-on .decaf-notice.decaf-drop-2 {
+  margin-top: 80px !important;
+}
+
+html.decaf-on .decaf-notice.decaf-drop-3 {
+  margin-top: 104px !important;
+}
+
+html.decaf-on .decaf-notice.decaf-drop-4 {
+  margin-top: 128px !important;
+}
+
+/* In a short window the card has to fit, or part of it is always off screen. */
+@media (max-height: 520px) {
+  html.decaf-on .decaf-notice {
+    margin: 12px auto !important;
+    padding: 16px !important;
+  }
+
+  html.decaf-on .decaf-notice p.decaf-notice-title {
+    font-size: 17px !important;
+  }
+
+  html.decaf-on .decaf-notice p.decaf-notice-body {
+    display: none !important;
+  }
+
+  html.decaf-on .decaf-notice .decaf-notice-hold {
+    margin-top: 14px !important;
+    padding: 10px 14px !important;
+  }
+}
+
+html.decaf-on .decaf-notice p.decaf-notice-title {
+  font-size: 19px !important;
+  font-weight: 620 !important;
+  line-height: 1.3 !important;
+  letter-spacing: -0.2px !important;
   color: inherit !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-eyebrow {
-  margin: 0 0 10px !important;
-  color: #aeb8b0 !important;
-  font: 700 12px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-  letter-spacing: .08em !important;
-  text-transform: uppercase !important;
+html.decaf-on .decaf-notice p.decaf-notice-body {
+  margin-top: 8px !important;
+  font-size: 14px !important;
+  color: #6d675f !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-sheet h2 {
-  margin: 0 !important;
-  color: #ffffff !important;
-  font: 700 clamp(22px, 4vw, 30px)/1.15 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-  letter-spacing: -.02em !important;
+html.decaf-on .decaf-notice p.decaf-notice-hint,
+html.decaf-on .decaf-notice p.decaf-notice-status {
+  margin-top: 10px !important;
+  font-size: 14px !important;
+  color: #6d675f !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-title {
-  margin: 22px 0 0 !important;
-  color: #ffffff !important;
-  font: 600 16px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
+html.decaf-on .decaf-notice p.decaf-notice-status:empty,
+html.decaf-on .decaf-notice p[hidden] {
+  display: none !important;
 }
 
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-meta,
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-description {
-  margin: 6px 0 0 !important;
-  color: #b8c0ba !important;
-  font: 400 13px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-description {
-  margin-top: 18px !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-actions {
-  display: grid !important;
-  gap: 10px !important;
-  margin-top: 24px !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button {
+html.decaf-on .decaf-notice .decaf-notice-hold {
+  box-sizing: border-box !important;
+  display: block !important;
+  position: relative !important;
   width: 100% !important;
-  min-height: 44px !important;
-  margin: 0 !important;
-  padding: 10px 18px !important;
-  border: 0 !important;
-  border-radius: 10px !important;
-  background: #f4f6f3 !important;
-  color: #182019 !important;
-  box-shadow: none !important;
+  max-width: none !important;
+  margin: 20px 0 0 !important;
+  padding: 13px 16px !important;
+  overflow: hidden !important;
+  border: 1px solid #ded7cc !important;
+  border-radius: 12px !important;
+  background: #faf8f5 !important;
+  background-image: none !important;
+  color: #1d1b19 !important;
+  font-size: 16px !important;
+  font-weight: 560 !important;
+  line-height: 1.45 !important;
+  text-align: center !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
   cursor: pointer !important;
-  font: 700 14px/1.2 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button-secondary {
-  border: 1px solid #718077 !important;
-  background: transparent !important;
-  color: #f7f8f6 !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button-tertiary {
-  min-height: 40px !important;
-  background: transparent !important;
-  color: #b8c0ba !important;
-  font-size: 13px !important;
-  font-weight: 600 !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button:hover {
-  background: #ffffff !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button-secondary:hover {
-  background: rgba(255, 255, 255, .08) !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button-tertiary:hover {
-  background: rgba(255, 255, 255, .05) !important;
-  color: #f7f8f6 !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button:focus-visible {
-  outline: 3px solid #a9c9ae !important;
-  outline-offset: 3px !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-button:disabled {
-  cursor: default !important;
-  opacity: .7 !important;
-}
-
-@media (max-width: 560px), (max-height: 420px) {
-  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-gate {
-    padding: 18px !important;
-  }
-
-  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-title {
-    margin-top: 14px !important;
-  }
-
-  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-description {
-    margin-top: 12px !important;
-  }
-
-  html.unaddictify-active.unaddictify-site-youtube .unaddictify-youtube-focus-actions {
-    margin-top: 16px !important;
-  }
-}
-
-html.unaddictify-active.unaddictify-hide-notification-badges .unaddictify-notification-badge {
-  display: none !important;
-}
-
-html.unaddictify-active .unaddictify-hidden-tab,
-html.unaddictify-active .unaddictify-hidden-site-item,
-html.unaddictify-active .unaddictify-hidden-comments,
-html.unaddictify-active .unaddictify-site-count {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-instagram-hide-reels a[href='/reels'],
-html.unaddictify-active.unaddictify-instagram-hide-reels a[href='/reels/'],
-html.unaddictify-active.unaddictify-instagram-hide-reels a[href*='/reels/'] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-youtube.unaddictify-youtube-hide-comments ytd-comments,
-html.unaddictify-active.unaddictify-site-youtube.unaddictify-youtube-hide-comments #comments {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="attachment" i] img,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="attachment" i] video,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="visualMedia" i] img,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="visualMedia" i] video,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] img,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="imageWrapper" i] video,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="embedMedia" i] img,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media [data-list-item-id^="chat-messages"] [class*="embedMedia" i] video,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media embed,
-html.unaddictify-active.unaddictify-site-discord.unaddictify-discord-hide-media iframe {
-  display: none !important;
-}
-
-/* Site-specific discovery cues. These selectors only remove optional
-   navigation or recommendation surfaces; the host page keeps its player,
-   search, scrolling, and primary controls. */
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab a[href="/live"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab a[href="/live/"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab [data-e2e="nav-live"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-live-tab [data-e2e="nav-live-link"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab a[href="/shop"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab a[href="/shop/"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab [data-e2e="nav-shop"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-shop-tab [data-e2e="nav-shop-link"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-comments [data-e2e="comment-list"],
-html.unaddictify-active.unaddictify-site-tiktok.unaddictify-tiktok-hide-comments [data-e2e="comment-container"] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-discovery [data-a-target="recommendations"],
-html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-discovery [data-a-target="recommended-channels"],
-html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-clips [data-a-target="clips-carousel"],
-html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-chat #live-chat-frame,
-html.unaddictify-active.unaddictify-site-twitch.unaddictify-twitch-hide-chat [data-a-target="chat-room"] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-explore a[href="/explore"],
-html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-explore a[href="/i/explore"],
-html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-explore [data-testid="AppTabBar_Explore_Link"],
-html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-for-you-tab a[href*="/for-you" i],
-html.unaddictify-active.unaddictify-site-x.unaddictify-x-hide-for-you-tab [role="tab"][aria-label*="for you" i] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-reels a[href*="/reels" i],
-html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-watch a[href*="/watch" i],
-html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-stories [data-pagelet*="story" i],
-html.unaddictify-active.unaddictify-site-facebook.unaddictify-facebook-hide-stories [aria-label*="stories" i] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-doodles #hplogo,
-html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-doodles img[alt*="doodle" i],
-html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-discover [data-attrid*="discover" i],
-html.unaddictify-active.unaddictify-site-google.unaddictify-google-hide-news [data-attrid*="news" i] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-site-pinterest.unaddictify-pinterest-hide-related [data-test-id="relatedPins"],
-html.unaddictify-active.unaddictify-site-pinterest.unaddictify-pinterest-hide-related [data-test-id="more-like-this"],
-html.unaddictify-active.unaddictify-site-snapchat.unaddictify-snapchat-hide-spotlight a[href*="/spotlight" i],
-html.unaddictify-active.unaddictify-site-snapchat.unaddictify-snapchat-hide-discover a[href*="/discover" i],
-html.unaddictify-active.unaddictify-site-snapchat.unaddictify-snapchat-hide-stories a[href*="/stories" i],
-html.unaddictify-active.unaddictify-site-whatsapp.unaddictify-whatsapp-hide-status [data-testid="status-v3"],
-html.unaddictify-active.unaddictify-site-whatsapp.unaddictify-whatsapp-hide-channels [data-testid="channels"],
-html.unaddictify-active.unaddictify-site-messenger.unaddictify-messenger-hide-stories [data-testid*="story" i] {
-  display: none !important;
-}
-
-html.unaddictify-active.unaddictify-hide-profile-media .unaddictify-profile-media {
-  display: none !important;
-}
-
-/* Profile images are kept available by default. The explicit profile setting
-   can hide them without treating them as feed media or transforming them. */
-html.unaddictify-active .unaddictify-profile-media.unaddictify-profile-media.unaddictify-profile-media {
-  filter: none !important;
+  touch-action: none !important;
+  user-select: none !important;
+  -webkit-user-select: none !important;
   transform: none !important;
+  filter: none !important;
+  box-shadow: none !important;
+  min-height: 0 !important;
 }
 
-html:not(.unaddictify-active) .unaddictify-media,
-html:not(.unaddictify-active) .unaddictify-media-surface {
+html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] {
+  border-color: #c9bfae !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-fill {
+  display: block !important;
+  position: absolute !important;
+  inset: 0 !important;
+  width: auto !important;
+  height: auto !important;
+  transform-origin: left center !important;
+  background: #ece3d6 !important;
+  pointer-events: none !important;
+  /* Deliberately not !important: an important declaration would outrank the
+     animation below and the progress bar would never move. */
+  transform: scaleX(0);
+}
+
+html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] .decaf-notice-fill {
+  animation-name: decaf-fill !important;
+  animation-timing-function: linear !important;
+  animation-fill-mode: forwards !important;
+}
+
+html.decaf-on .decaf-notice .decaf-hold-3 .decaf-notice-fill {
+  animation-duration: 3s !important;
+}
+
+html.decaf-on .decaf-notice .decaf-hold-7 .decaf-notice-fill {
+  animation-duration: 7s !important;
+}
+
+html.decaf-on .decaf-notice .decaf-hold-11 .decaf-notice-fill {
+  animation-duration: 11s !important;
+}
+
+html.decaf-on .decaf-notice .decaf-hold-15 .decaf-notice-fill {
+  animation-duration: 15s !important;
+}
+
+html.decaf-on .decaf-notice .decaf-hold-19 .decaf-notice-fill {
+  animation-duration: 19s !important;
+}
+
+@keyframes decaf-fill {
+  from {
+    transform: scaleX(0);
+  }
+  to {
+    transform: scaleX(1);
+  }
+}
+
+html.decaf-on .decaf-notice .decaf-notice-label {
+  display: inline !important;
+  position: relative !important;
+  color: inherit !important;
+  font: inherit !important;
+  font-weight: 560 !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-hold:focus-visible,
+html.decaf-on .decaf-pill:focus-visible {
+  outline: 2px solid #6f4e37 !important;
+  outline-offset: 2px !important;
+}
+
+/* On a dark page, matched to the site rather than the operating system. */
+html.decaf-on .decaf-notice.decaf-dark {
+  border-color: #302c28 !important;
+  background: #1c1a18 !important;
+  color: #f2efe9 !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark p.decaf-notice-body,
+html.decaf-on .decaf-notice.decaf-dark p.decaf-notice-hint,
+html.decaf-on .decaf-notice.decaf-dark p.decaf-notice-status {
+  color: #a49d92 !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold {
+  border-color: #322e2a !important;
+  background: #131211 !important;
+  color: #f2efe9 !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold[data-holding="true"] {
+  border-color: #4a423b !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-fill {
+  background: #2c2723 !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold:focus-visible {
+  outline-color: #d8b79a !important;
+}
+
+/* --------------------------------------------------- chip and colour pill ----- */
+
+html.decaf-on .decaf-chip,
+html.decaf-on .decaf-pill {
+  box-sizing: border-box !important;
+  position: fixed !important;
+  z-index: 2147483646 !important;
+  width: auto !important;
+  min-width: 0 !important;
+  max-width: 320px !important;
+  height: auto !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 10px 16px !important;
+  border: 0 !important;
+  border-radius: 999px !important;
+  background-image: none !important;
+  color: #fdfbf8 !important;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 1.4 !important;
+  letter-spacing: normal !important;
+  text-align: center !important;
+  text-transform: none !important;
+  text-shadow: none !important;
+  float: none !important;
   filter: none !important;
+  visibility: visible !important;
   transform: none !important;
+  appearance: none !important;
+  -webkit-appearance: none !important;
+}
+
+html.decaf-on .decaf-chip {
+  left: 50% !important;
+  right: auto !important;
+  top: auto !important;
+  bottom: 24px !important;
+  transform: translateX(-50%) !important;
+  background: rgba(31, 26, 22, 0.92) !important;
+  pointer-events: none !important;
+}
+
+html.decaf-on .decaf-pill {
+  left: auto !important;
+  top: auto !important;
+  right: 20px !important;
+  bottom: 20px !important;
+  border: 1px solid rgba(255, 255, 255, 0.18) !important;
+  background: rgba(31, 26, 22, 0.9) !important;
+  font-weight: 520 !important;
+  cursor: pointer !important;
+  opacity: 0.85 !important;
+}
+
+html.decaf-on .decaf-pill:hover {
+  opacity: 1 !important;
+}
+
+/* Out of the way of whatever the site keeps in that corner: a message dock, a
+   compose button, a promo bar, a stack of round buttons. The offsets match
+   PILL_SPOTS in content.js. */
+html.decaf-on .decaf-pill.decaf-pill-high {
+  bottom: 96px !important;
+}
+
+html.decaf-on .decaf-pill.decaf-pill-aside {
+  right: 96px !important;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] .decaf-notice-fill {
+    animation-name: none !important;
+    transform: scaleX(1);
+    opacity: 0.5 !important;
+  }
 }

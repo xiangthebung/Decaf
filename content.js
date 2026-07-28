@@ -1,1708 +1,1364 @@
+/**
+ * Decaf — page runtime.
+ *
+ * Four jobs, in order of importance:
+ *   1. Empty a paused feed in place and say so, without touching the rest of the
+ *      site. The page keeps scrolling, the header and search keep working.
+ *   2. Take the color out of media, and the numbers out of reward counts.
+ *   3. Offer full color for the one thing being watched, one page at a time.
+ *   4. Stay out of the way of everything else.
+ *
+ * Decaf's own elements live in the page DOM and are styled from content.css,
+ * which Chrome injects for the extension. That is deliberate: a site's own CSS
+ * cannot reach them, and no styles are ever built at runtime.
+ */
 (() => {
-  const U = globalThis.UnaddictifySettings;
-  let currentSite = U.getSiteFromUrl(location.href);
+  "use strict";
 
-  // Keep the first paint neutral while settings and the current route resolve.
-  // The lifecycle must remain installed even on a matched but unsupported path
-  // so SPA navigation can later enter a supported surface.
-  document.documentElement.classList.add("unaddictify-pending");
-
-  const SITE_SETTING_CLASS_MAP = {
-    instagram: { hideReels: "unaddictify-instagram-hide-reels", hideComments: "unaddictify-instagram-hide-comments" },
-    discord: { hideMedia: "unaddictify-discord-hide-media" },
-    reddit: { hideComments: "unaddictify-reddit-hide-comments" },
-    youtube: {
-      hideShortsTab: "unaddictify-youtube-hide-shorts-tab",
-      hideComments: "unaddictify-youtube-hide-comments",
-      requireVideoApproval: "unaddictify-youtube-require-video-approval",
-      sabotageOpenedVideos: "unaddictify-youtube-sabotage-opened-videos"
-    },
-    tiktok: {
-      hideLiveTab: "unaddictify-tiktok-hide-live-tab",
-      hideShopTab: "unaddictify-tiktok-hide-shop-tab",
-      hideComments: "unaddictify-tiktok-hide-comments"
-    },
-    twitch: {
-      hideDiscovery: "unaddictify-twitch-hide-discovery",
-      hideClips: "unaddictify-twitch-hide-clips",
-      hideChat: "unaddictify-twitch-hide-chat"
-    },
-    x: {
-      hideExplore: "unaddictify-x-hide-explore",
-      hideSuggestedPosts: "unaddictify-x-hide-suggested-posts",
-      hideForYouTab: "unaddictify-x-hide-for-you-tab"
-    },
-    facebook: {
-      hideReels: "unaddictify-facebook-hide-reels",
-      hideWatch: "unaddictify-facebook-hide-watch",
-      hideStories: "unaddictify-facebook-hide-stories",
-      hideSuggestedPosts: "unaddictify-facebook-hide-suggested-posts"
-    },
-    google: {
-      hideDoodles: "unaddictify-google-hide-doodles",
-      hideTrendingSearches: "unaddictify-google-hide-trending",
-      hideDiscover: "unaddictify-google-hide-discover",
-      hideNewsPanels: "unaddictify-google-hide-news"
-    },
-    pinterest: {
-      hideRecommendations: "unaddictify-pinterest-hide-recommendations",
-      hideRelatedPins: "unaddictify-pinterest-hide-related",
-      hideSaveCounts: "unaddictify-pinterest-hide-save-counts"
-    },
-    threads: {
-      hideForYouTab: "unaddictify-threads-hide-for-you-tab",
-      hideSuggestedPosts: "unaddictify-threads-hide-suggested-posts"
-    },
-    snapchat: {
-      hideSpotlight: "unaddictify-snapchat-hide-spotlight",
-      hideDiscover: "unaddictify-snapchat-hide-discover",
-      hideStories: "unaddictify-snapchat-hide-stories"
-    },
-    whatsapp: {
-      hideStatus: "unaddictify-whatsapp-hide-status",
-      hideChannels: "unaddictify-whatsapp-hide-channels"
-    },
-    messenger: {
-      hideStories: "unaddictify-messenger-hide-stories",
-      hideSuggestedContent: "unaddictify-messenger-hide-suggested"
-    }
-  };
-
-  const SITE_SETTING_CLASSES = Object.values(SITE_SETTING_CLASS_MAP).flatMap((values) => Object.values(values));
+  const D = globalThis.Decaf;
+  if (!D) return;
 
   const ROOT_CLASSES = [
-    "unaddictify-active",
-    "unaddictify-site-instagram",
-    "unaddictify-site-discord",
-    "unaddictify-site-reddit",
-    "unaddictify-site-youtube",
-    "unaddictify-site-tiktok",
-    "unaddictify-site-twitch",
-    "unaddictify-site-x",
-    "unaddictify-site-facebook",
-    "unaddictify-site-google",
-    "unaddictify-site-pinterest",
-    "unaddictify-site-linkedin",
-    "unaddictify-site-threads",
-    "unaddictify-site-snapchat",
-    "unaddictify-site-whatsapp",
-    "unaddictify-site-messenger",
-    "unaddictify-youtube-shorts",
-    "unaddictify-youtube-video-approved",
-    "unaddictify-monochrome",
-    "unaddictify-upside-down-media",
-    "unaddictify-blur-thumbnails",
-    "unaddictify-hide-notification-badges",
-    "unaddictify-hide-engagement-counts",
-    "unaddictify-strip-media",
-    "unaddictify-hide-profile-media",
-    "unaddictify-instagram-hide-reels",
-    "unaddictify-instagram-hide-comments",
-    "unaddictify-discord-hide-media",
-    "unaddictify-reddit-hide-comments",
-    "unaddictify-youtube-hide-shorts-tab",
-    "unaddictify-youtube-hide-comments",
-    "unaddictify-youtube-require-video-approval",
-    // Kept only so a page that was already running an older content script is
-    // cleaned up correctly after the LinkedIn options are removed.
-    "unaddictify-linkedin-hide-suggested-posts",
-    "unaddictify-linkedin-hide-people-suggestions",
-    "unaddictify-linkedin-hide-celebrations",
-    ...SITE_SETTING_CLASSES
+    "decaf-on",
+    "decaf-calm",
+    "decaf-feed",
+    "decaf-media",
+    "decaf-content",
+    "decaf-hide-feed",
+    "decaf-hide-comments",
+    "decaf-upside-down",
+    "decaf-hide-badges",
+    "decaf-color",
+    ...D.SITE_KEYS.map((key) => `decaf-site-${key}`)
   ];
 
-  const ROOT_FEATURE_CLASSES = {
-    upsideDownMedia: "unaddictify-upside-down-media",
-    blurThumbnails: "unaddictify-blur-thumbnails",
-    hideNotificationBadges: "unaddictify-hide-notification-badges",
-    hideEngagementCounts: "unaddictify-hide-engagement-counts",
-    stripMedia: "unaddictify-strip-media",
-    hideProfileMedia: "unaddictify-hide-profile-media"
+  const REWARD_WORDS = [
+    "likes?", "views?", "comments?", "repl(?:y|ies)", "reposts?", "retweets?", "shares?",
+    "followers?", "following", "subscribers?", "members?", "votes?", "upvotes?", "downvotes?",
+    "points?", "karma", "saves?", "reactions?", "watching", "viewers?", "posts?", "bookmarks?",
+    "favou?rites?", "quotes?", "impressions?"
+  ].join("|");
+  const COUNT_WITH_NOUN = new RegExp(`\\d[\\d.,]*\\s*[KkMmBb]?\\+?\\s*(?:${REWARD_WORDS})\\b`, "i");
+  const BARE_COUNT = /^\s*[\d][\d.,\u202f\u00a0 ]*\s*[KkMmBb]?\+?\s*$/;
+  // "1.8M" in one element, "Views" in the next: X writes the noun beside the
+  // number rather than with it. Facebook writes it in front: "All reactions: 265".
+  const REWARD_NOUN_FIRST = new RegExp(`^(?:${REWARD_WORDS})\\b`, "i");
+  const REWARD_NOUN_LAST = new RegExp(`(?:${REWARD_WORDS})\\s*[:·•|,-]?\\s*$`, "i");
+  const REWARD_CONTEXT = /like|view|comment|repl|repost|retweet|quote|share|follow|subscrib|member|vote|karma|save|bookmark|favou?rite|reaction|impression|watching|viewer|engagement|score/i;
+  const CONTEXT_ATTRIBUTES = [
+    "aria-label", "title", "class", "id", "data-testid", "data-test-id", "data-e2e",
+    "data-a-target", "data-post-click-location", "data-view-name", "slot", "name"
+  ];
+  // Some badges live in a shadow root (Reddit's <dynamic-badge>). Marking the host
+  // works anyway: a filter on the host applies to everything inside it.
+  const BADGE_SELECTOR = [
+    "dynamic-badge",
+    "[class*='badge' i]",
+    "[class*='unread' i]",
+    "[class*='notificationcount' i]",
+    "[class*='notification-count' i]",
+    "[class*='notification-dot' i]",
+    "[class*='mentioncount' i]",
+    // The red "live now" dot. Twitch writes the class in camel case, which the
+    // i flag takes care of: ScChannelStatusIndicator.
+    "[class*='statusindicator' i]",
+    "[class*='status-indicator' i]",
+    "[data-badge]",
+    "[data-unread-count]"
+  ].join(",");
+  const BADGE_REGION_SELECTOR = "nav,header,[role='navigation'],[role='tablist'],[role='banner']";
+  // Elements that exist only to show a count, whatever surrounds them. Every
+  // number inside one is a count, however deeply it is wrapped.
+  const COUNT_ELEMENT_SELECTOR = "faceplate-number,shreddit-score";
+  // Twitch labels its viewer counts nowhere: the number sits in a div named
+  // after the sidebar it lives in.
+  const SITE_COUNT_ELEMENTS = {
+    twitch: "[data-a-target='side-nav-live-status'],[data-a-target*='viewers-count'],[data-a-target*='viewer-count']",
+    // Reddit's community card: members, people online, rank. Every number in it
+    // is social proof, and none of them is labelled anywhere near the number.
+    reddit: "shreddit-subreddit-header",
+    // Facebook's comment and share counts are bare numbers in unnamed buttons,
+    // with the icon drawn in CSS. A button whose whole text is a number is a
+    // counter; a button with words in it keeps them.
+    facebook: "[role='button']"
   };
 
-  const CARD_SELECTOR = [
+  function countElementSelector() {
+    const extra = SITE_COUNT_ELEMENTS[site];
+    return extra ? `${COUNT_ELEMENT_SELECTOR},${extra}` : COUNT_ELEMENT_SELECTOR;
+  }
+  const OURS = ".decaf-notice,.decaf-chip,.decaf-pill";
+  // What one item in a feed looks like. Used to find a feed whose container Decaf
+  // no longer recognizes, and to check afterwards that no item is left showing.
+  // Nothing in here may match a *part* of a single post, or Decaf would mistake
+  // the inside of one post for the whole feed.
+  const FEED_ITEM_SELECTOR = [
     "article",
-    "ytd-rich-item-renderer",
-    "ytd-video-renderer",
-    "ytd-compact-video-renderer",
-    "yt-lockup-view-model",
-    "ytm-rich-item-renderer",
-    "ytm-video-with-context-renderer",
-    "ytm-compact-video-renderer",
-    "ytm-shorts-lockup-view-model",
-    "yt-thumbnail-view-model",
-    "[data-testid='post-container']",
+    "[role='article']",
     "shreddit-post",
-    "div[role='article']",
-    "[data-e2e='recommend-list-item-container']",
-    "[data-e2e='video-item']",
-    "[data-e2e='browse-card']",
-    "[data-a-target='preview-card']",
-    "[data-a-target='preview-card-image-link']",
+    "ytd-rich-item-renderer",
     "[data-testid='cellInnerDiv']",
-    "[data-testid='tweet']",
-    "[data-testid='pin']",
-    "[data-testid='pinWrapper']",
-    ".feed-shared-update-v2",
-    "[class*='feed-shared-update' i]",
-    "[class*='update-components' i]",
-    "[data-urn*='activity']",
-    "[data-testid='post-container']",
-    "[data-testid='msg-container']",
-    "[data-testid='conversation-panel-messages']",
-    "[class*='messageListItem']",
-    "[data-list-item-id^='chat-messages']",
-    "li[class*='message']"
+    "[data-e2e='recommend-list-item-container']",
+    "[data-test-id='pin']",
+    "[data-id^='urn:li:activity']",
+    ".thing"
   ].join(",");
-
-  const MEDIA_WRAPPER_SELECTOR = [
-    "[class*='thumbnail' i]",
-    "[class*='media' i]",
-    "[class*='attachment' i]",
-    "[class*='visualMedia' i]",
-    "[class*='imageWrapper' i]",
-    "[class*='imageContainer' i]",
-    "[class*='embedMedia' i]",
-    "[data-testid*='media' i]",
-    "[data-test-id*='media' i]"
-  ].join(",");
-
-  const SITE_MEDIA_FALLBACK_SELECTORS = {
-    discord: [
-      "[class*='attachment' i] img",
-      "[class*='attachment' i] video",
-      "[class*='visualMedia' i] img",
-      "[class*='visualMedia' i] video",
-      "[class*='imageWrapper' i] img",
-      "[class*='imageWrapper' i] video",
-      "[class*='embedMedia' i] img",
-      "[class*='embedMedia' i] video"
-    ],
-    linkedin: [
-      "[class*='feed-shared' i] img",
-      "[class*='feed-shared' i] video",
-      "[class*='update-components' i] img",
-      "[class*='update-components' i] video",
-      "[data-urn*='activity' i] img",
-      "[data-urn*='activity' i] video",
-      "img[src*='licdn.com' i]",
-      "img[srcset*='licdn.com' i]"
-    ]
+  const SITE_FEED_ITEMS = {
+    threads: "[data-pressable-container]",
+    bluesky: "[data-testid^='feedItem']"
   };
 
-  const MEDIA_SURFACE_SELECTOR = [
-    ".ytp-cued-thumbnail-overlay-image",
-    ".ytp-thumbnail-overlay-image",
-    "article [style*='background-image' i]",
-    "[role='article'] [style*='background-image' i]",
-    "[class*='thumbnail' i][style*='background-image' i]",
-    "[class*='media' i][style*='background-image' i]",
-    "[role='img'][style*='background-image' i]",
-    "[class*='attachment' i] [style*='background-image' i]",
-    "[class*='media' i] [style*='background-image' i]",
-    "[data-testid='post-container'] [style*='background-image' i]",
-    "[data-e2e='video-item'] [style*='background-image' i]",
-    "[data-a-target='preview-card'] [style*='background-image' i]",
-    "[data-testid='pin'] [style*='background-image' i]"
+  function feedItemSelector() {
+    const extra = SITE_FEED_ITEMS[site];
+    return extra ? `${FEED_ITEM_SELECTOR},${extra}` : FEED_ITEM_SELECTOR;
+  }
+  // Never touch text the person is writing, text that is not really text, a
+  // time - "5m" reads like a count - or Decaf's own words.
+  const SKIP_TEXT_PARENTS = [
+    "script", "style", "textarea", "input", "select", "option", "code", "pre", "title",
+    "noscript", "[contenteditable='true']", "[contenteditable='']", "[role='textbox']",
+    "time", "[datetime]", OURS
   ].join(",");
-
-  const CARD_ONLY_IMAGE_SITES = new Set([
-    "tiktok",
-    "twitch",
-    "x",
-    "facebook",
-    "google",
-    "pinterest",
-    "linkedin",
-    "threads",
-    "snapchat",
-    "whatsapp",
-    "messenger"
-  ]);
-
-  const BADGE_DESCENDANT_SELECTOR = [
-    "[class~='badge' i]",
-    "[class~='dot' i]",
-    "[class~='unread' i]",
-    "[class~='mention' i]",
-    "[class~='notification-badge' i]",
-    "[class~='notificationBadge' i]",
-    "[class~='unread-badge' i]",
-    "[class~='unreadBadge' i]",
-    "[class~='mention-badge' i]",
-    "[class~='mentionBadge' i]",
-    "[data-badge]",
-    "[data-unread-count]"
-  ].join(",");
-
-  const GENERIC_BADGE_SELECTORS = [
-    "[class~='notificationBadge' i]",
-    "[class~='notification-badge' i]",
-    "[class~='notificationCount' i]",
-    "[class~='notification-count' i]",
-    "[class~='notification-dot' i]",
-    "[class~='unreadBadge' i]",
-    "[class~='unread-badge' i]",
-    "[class~='unreadCount' i]",
-    "[class~='unread-count' i]",
-    "[class~='unread-dot' i]",
-    "[class~='mentionBadge' i]",
-    "[data-badge]",
-    "[data-unread-count]"
+  // Where the "Show in color" pill may sit, in the order it tries them. The
+  // offsets have to match the classes in content.css.
+  const PILL_SPOTS = [
+    { right: 20, bottom: 20, classes: [] },
+    { right: 20, bottom: 96, classes: ["decaf-pill-high"] },
+    { right: 96, bottom: 20, classes: ["decaf-pill-aside"] },
+    { right: 96, bottom: 96, classes: ["decaf-pill-high", "decaf-pill-aside"] }
   ];
+  const ICON_SELECTOR = "svg[aria-label],img[alt]";
+  // How far a number may sit inside a control and still be read as its count.
+  // Threads nests the number five elements below its like button.
+  const CONTROL_DEPTH = 6;
+  const TITLE_BADGE = /^\s*[([]\s*\d[\d.,KkMmBb+]*\s*[)\]]\s*/;
+  const GESTURE_WINDOW_MS = 1200;
+  const MAX_TEXT_LENGTH = 48;
+  const MAX_PENDING_ROOTS = 64;
 
-  const BADGE_SELECTORS = {
-    instagram: [
-      "[aria-label*='unread' i]",
-      "[aria-label*='notification' i]",
-      "[aria-label*='mention' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='notification-dot' i]",
-      "[class~='notificationCount' i]",
-      "[class~='unreadCount' i]"
-    ],
-    reddit: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='mention' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationCount' i]",
-      "[class~='unreadBadge' i]",
-      "[class~='unreadCount' i]"
-    ],
-    youtube: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='mention' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='notification-dot' i]",
-      "[class~='notificationCount' i]"
-    ],
-    discord: [
-      "[aria-label*='unread' i]",
-      "[aria-label*='mention' i]",
-      "[class~='numberBadge' i]",
-      "[class~='mentionBadge' i]",
-      "[class~='unreadBadge' i]",
-      "[class~='unreadCount' i]"
-    ],
-    tiktok: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='inbox' i]",
-      "[class~='badge' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]"
-    ],
-    twitch: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='unread' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='badge' i]"
-    ],
-    x: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='message' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='badge' i]",
-      "[data-testid='AppTabBar_Notifications_Link'] span"
-    ],
-    facebook: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='unread' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='badge' i]"
-    ],
-    google: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='unread' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='badge' i]"
-    ],
-    pinterest: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='message' i]",
-      "[class~='badge' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]"
-    ],
-    linkedin: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='unread' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class~='badge' i]",
-      "[class*='global-nav__primary-link--notifications' i]",
-      "a[href*='/notifications' i]"
-    ],
-    threads: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='activity' i]",
-      "[class~='badge' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]"
-    ],
-    snapchat: [
-      "[aria-label*='notification' i]",
-      "[aria-label*='message' i]",
-      "[class~='badge' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]"
-    ],
-    whatsapp: [
-      "[aria-label*='unread' i]",
-      "[aria-label*='notification' i]",
-      "[class~='badge' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class*='unread' i]"
-    ],
-    messenger: [
-      "[aria-label*='unread' i]",
-      "[aria-label*='notification' i]",
-      "[class~='badge' i]",
-      "[class~='notification-badge' i]",
-      "[class~='notificationBadge' i]",
-      "[class*='unread' i]"
-    ]
-  };
-
-  const SHORTS_TAB_SELECTORS = [
-    "a[href='/shorts']",
-    "a[href='/shorts/']",
-    "a[href^='/shorts?']",
-    "[role='tab']",
-    "yt-chip-cloud-chip-renderer",
-    "ytm-search-filter-chip-renderer",
-    "yt-search-filter-chip-renderer",
-    "tp-yt-paper-tab",
-    "ytd-guide-entry-renderer",
-    "ytd-mini-guide-entry-renderer"
-  ];
-
-  const ENGAGEMENT_PATTERN = /\b\d[\d,.]*\s*(?:[KMB]+)?\s*(likes?|comments?|views?|followers?|following?|subscribers?|members?|votes?|shares?|reposts?|reactions?|saves?|upvotes?|points?|ratings?)\b/i;
-  const COUNT_ONLY_PATTERN = /^\s*\d[\d,.]*\s*(?:[KMB]+)?\s*$/i;
-  const DISCOVERY_COPY_PATTERN = /\b(?:recommended|suggested|for you|you might like|more like this|people you may know|who to follow|trending|discover|recommended for you|sponsored)\b/i;
-  const DISCOVERY_TARGET_SELECTOR = [
-    "[data-a-target='preview-card']",
-    "[data-a-target='side-nav-card']",
-    "[data-a-target='recommendations']",
-    "[data-a-target='recommended-channels']",
-    "[data-a-target='followed-channels']",
-    "[data-testid*='recommend' i]",
-    "[data-testid*='suggest' i]",
-    "[data-pagelet*='suggest' i]",
-    "[data-attrid]"
-  ].join(",");
-  const DISCOVERY_SCOPE_SELECTOR = `${DISCOVERY_TARGET_SELECTOR}, section, [role='region']`;
-  const DISCOVERY_TEXT_SELECTOR = "a, li, h5, h6, span, div, p, small, label";
-  const MUTATION_ATTRIBUTE_SCOPE_SELECTOR = [
-    CARD_SELECTOR,
-    DISCOVERY_TARGET_SELECTOR,
-    "nav",
-    "header",
-    "[role='banner']",
-    "[role='navigation']",
-    "[role='tablist']",
-    "[aria-label*='notification' i]",
-    "[aria-label*='unread' i]",
-    "[aria-label*='mention' i]"
-  ].join(",");
-  const MUTATION_CONTENT_SELECTOR = [
-    CARD_SELECTOR,
-    "img, video, canvas",
-    "[role='img']",
-    MEDIA_WRAPPER_SELECTOR,
-    MEDIA_SURFACE_SELECTOR,
-    DISCOVERY_TARGET_SELECTOR,
-    "section, [role='region']",
-    "h1, h2, h3, h4, h5, h6, [role='heading'], [aria-label], [title]",
-    "nav a, header a, [role='tab']",
-    "[aria-label*='notification' i], [aria-label*='unread' i], [aria-label*='mention' i]"
-  ].join(",");
-  const MUTATION_NESTED_ANCESTOR_SELECTOR = [
-    "nav a",
-    "header a",
-    "[role='tab']",
-    "h1, h2, h3, h4, h5, h6, [role='heading']",
-    "[aria-label]",
-    "[title]",
-    "[data-testid*='recommend' i]",
-    "[data-testid*='suggest' i]",
-    "[data-pagelet*='suggest' i]",
-    "[data-a-target]"
-  ].join(",");
-  const RESCAN_ATTRIBUTES = new Set([
-    "aria-label", "title", "href", "data-testid", "data-test-id", "data-e2e",
-    "data-a-target", "data-pagelet", "data-attrid", "data-list-item-id"
-  ]);
-
-  let settings = U.mergeSettings(U.cloneDefaults());
+  let settings = null;
+  let site = D.getSite(location.href);
+  let route = D.getRoute(location.href);
   let active = false;
+  let hidingFeed = false;
+  let colorGranted = false;
   let observedUrl = location.href;
-  let originalPushState = null;
-  let originalReplaceState = null;
   let observer = null;
+  let scanHandle = null;
   let scanTimer = null;
-  let scanIdleHandle = null;
-  let bypassTimer = null;
-  let focusLockTimer = null;
-  let youtubeGateFrame = null;
-  let youtubeGate = null;
-  let youtubeGateRestoreFocus = null;
-  let youtubeApprovedPlayer = null;
-  let youtubeFocusApprovals = U.normalizeYouTubeFocusApprovals();
-  const youtubeOpenedVideoChoices = new Map();
-  let pendingDocumentScan = false;
-  const MAX_PENDING_ROOTS = 96;
-  const ROOTS_PER_SCAN = 24;
+  let pendingDocument = false;
   const pendingRoots = new Set();
-  const touched = new Set();
+  let passTimer = null;
+  let chipTimer = null;
+  let chipHideTimer = null;
+  let bootTimer = null;
+  let urlTimer = null;
+  let pillCheckTimer = null;
+  let lastGestureAt = 0;
+  let originalTitle = "";
+  let maskedTitle = "";
+  let passEnded = false;
+
+  let notice = null;
+  let noticeParts = null;
+  let chip = null;
+  let pill = null;
+  let hold = null;
+
+  const touchedElements = new Set();
+  const touchedTextNodes = new Set();
   const originalText = new WeakMap();
   const originalAria = new WeakMap();
 
-  function addClass(element, className) {
-    if (!element?.classList) return;
-    element.classList.add(className);
-    touched.add(element);
+  /* ------------------------------------------------------------- helpers -- */
+
+  const root = () => document.documentElement;
+
+  function queryWithin(node, selector) {
+    if (!node) return [];
+    const found = node.querySelectorAll?.(selector);
+    const list = found ? Array.from(found) : [];
+    if (node.matches?.(selector)) list.unshift(node);
+    return list;
   }
 
-  function queryWithin(root, selector) {
-    const descendants = root?.querySelectorAll?.(selector) || [];
-    return root?.matches?.(selector) ? [root, ...descendants] : descendants;
+  function isOurs(node) {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    return Boolean(element?.closest?.(OURS));
   }
 
-  function isShortsPage() {
-    return currentSite === "youtube" && (location.pathname === "/shorts" || location.pathname.startsWith("/shorts/"));
-  }
-
-  function isYouTubeShortsMedia(element) {
-    if (currentSite !== "youtube") return false;
-    return Boolean(
-      (isShortsPage() && element.matches?.("video")) ||
-      element.closest?.("ytd-reel-video-renderer, ytd-reel-item-renderer, ytd-shorts, a[href*='/shorts/']")
-    );
-  }
-
-  function currentYouTubeVideoId() {
-    return currentSite === "youtube" && !isShortsPage() ? U.getYouTubeVideoId(location.href) : "";
-  }
-
-  function getYouTubeGateMode(videoId = currentYouTubeVideoId()) {
-    if (!active || !videoId) return "";
-    if (U.isLocked(settings)) {
-      if (!settings.siteSettings.youtube.requireVideoApproval) return "";
-      return U.isYouTubeVideoApproved(settings, youtubeFocusApprovals, videoId) ? "" : "focus";
+  /**
+   * The notice lives inside the site, so it should match the site rather than the
+   * operating system: plenty of people run a dark OS with a light YouTube.
+   */
+  function pageIsDark() {
+    for (const element of [document.body, root()]) {
+      if (!element) continue;
+      const parts = getComputedStyle(element).backgroundColor?.match(/\d+(?:\.\d+)?/g);
+      if (!parts || parts.length < 3) continue;
+      if (parts[3] !== undefined && Number(parts[3]) < 0.5) continue;
+      const [red, green, blue] = parts.slice(0, 3).map(Number);
+      return 0.2126 * red + 0.7152 * green + 0.0722 * blue < 128;
     }
-    if (!settings.siteSettings.youtube.sabotageOpenedVideos) return "";
-    return youtubeOpenedVideoChoices.has(videoId) ? "" : "opened";
+    return Boolean(globalThis.matchMedia?.("(prefers-color-scheme: dark)")?.matches);
   }
 
-  function shouldGateYouTubeVideo(videoId = currentYouTubeVideoId()) {
-    return Boolean(getYouTubeGateMode(videoId));
+  function make(tag, className, text = "") {
+    const element = document.createElement(tag);
+    element.className = className;
+    if (text) element.textContent = text;
+    return element;
   }
 
-  function getYouTubePlaybackMode(videoId) {
-    if (U.isLocked(settings)) return U.getYouTubeFocusApprovalMode(youtubeFocusApprovals, videoId);
-    return youtubeOpenedVideoChoices.get(videoId) || "";
+  /* -------------------------------------------------------- quiet visuals -- */
+
+  function contextText(element) {
+    let current = element;
+    let depth = 0;
+    let text = "";
+    // Stop before <html>: Decaf's own state classes live there and must never
+    // count as evidence that a number is a reward count.
+    while (current && depth < 4 && current !== root()) {
+      for (const name of CONTEXT_ATTRIBUTES) {
+        const value = current.getAttribute?.(name);
+        if (value) text += ` ${value}`;
+      }
+      text += ` ${current.localName || ""}`;
+      current = current.parentElement;
+      depth += 1;
+    }
+    return `${text} ${controlContext(element)}`.replace(/\bdecaf-[\w-]+/g, " ");
   }
 
-  function formatVideoDuration(seconds) {
-    if (!Number.isFinite(seconds) || seconds <= 0) return "";
-    const totalMinutes = Math.max(1, Math.round(seconds / 60));
-    const hours = Math.floor(totalMinutes / 60);
-    const minutes = totalMinutes % 60;
-    return hours ? `${hours} hr${hours === 1 ? "" : "s"}${minutes ? ` ${minutes} min` : ""}` : `${minutes} min`;
+  /** The control a number belongs to, if it belongs to one at all. */
+  function controlAround(element) {
+    let current = element;
+    for (let depth = 0; current && depth < CONTROL_DEPTH && current !== root(); depth += 1) {
+      if (isInteractive(current)) return current;
+      current = current.parentElement;
+    }
+    return null;
   }
 
-  function getYouTubeVideoDetails(player) {
-    const rawTitle = document.querySelector(
-      "ytd-watch-metadata h1 yt-formatted-string, ytd-watch-flexy h1 yt-formatted-string, #title h1"
-    )?.textContent || document.title.replace(/\s*-\s*YouTube\s*$/i, "");
-    const channel = document.querySelector(
-      "ytd-watch-metadata ytd-channel-name a, ytd-video-owner-renderer ytd-channel-name a, #owner-name a"
-    )?.textContent || "";
-    const duration = formatVideoDuration(player?.querySelector("video")?.duration);
-    return {
-      title: rawTitle.replace(/\s+/g, " ").trim() || "This video",
-      meta: [channel.replace(/\s+/g, " ").trim(), duration].filter(Boolean).join(" · ")
-    };
+  /**
+   * The first words that follow a number, even when the site keeps them in a
+   * separate element: <span>1.8M</span><span>Views</span>.
+   */
+  function followingText(element) {
+    let node = element;
+    for (let depth = 0; node && depth < CONTROL_DEPTH && node !== root(); depth += 1) {
+      let sibling = node.nextSibling;
+      for (let hops = 0; sibling && hops < 3; hops += 1) {
+        const text = (sibling.textContent || "").trim();
+        if (text) return text.slice(0, 24);
+        sibling = sibling.nextSibling;
+      }
+      node = node.parentElement;
+    }
+    return "";
   }
 
-  function focusWithoutScroll(element) {
-    if (!element?.isConnected || typeof element.focus !== "function") return false;
-    try {
-      element.focus({ preventScroll: true });
-    } catch (_) {
-      element.focus();
+  /**
+   * The words just before a number: "All reactions:" sits in its own element on
+   * Facebook. Text that carries a number of its own ends the search, so the
+   * count next door is never taken for this one's label.
+   */
+  function precedingText(element) {
+    let node = element;
+    for (let depth = 0; node && depth < CONTROL_DEPTH && node !== root(); depth += 1) {
+      let sibling = node.previousSibling;
+      for (let hops = 0; sibling && hops < 3; hops += 1) {
+        const text = (sibling.textContent || "").trim();
+        // Text with a number of its own - or a dash, which is a number Decaf
+        // has already masked - is another count, not this one's label.
+        if (text && !/[\d—]/.test(text)) return text.slice(-24);
+        sibling = sibling.previousSibling;
+      }
+      node = node.parentElement;
+    }
+    return "";
+  }
+
+  /** The label of the first icon in or just before a node, if it reads like a word. */
+  function iconLabel(node) {
+    const icon = node.matches?.(ICON_SELECTOR) ? node : node.querySelector?.(ICON_SELECTOR);
+    const label = icon?.getAttribute("aria-label") || icon?.getAttribute("alt") || "";
+    return label.length <= 24 && !/\d/.test(label) ? label : "";
+  }
+
+  /**
+   * What a number means is written on the control it belongs to, not on the
+   * handful of wrappers around the number itself:
+   *   <button data-testid="like" aria-label="5.8K Likes"><span>…5.8K</span>   X
+   *   <div role="button"><svg aria-label="Like"><span>…1.5K</span></div>      Threads
+   *   <span><svg aria-label="Like"></span><span role="button">17.6K</span>    Instagram
+   * So the control is found first, then read: its own labels, then the label of
+   * an icon inside it or just before it. A number that belongs to no control -
+   * a price, a date, a score in an article - is left alone.
+   */
+  function controlContext(element) {
+    const control = controlAround(element);
+    if (!control) return "";
+    let text = "";
+    for (const name of CONTEXT_ATTRIBUTES) {
+      const value = control.getAttribute?.(name);
+      if (value) text += ` ${value}`;
+    }
+    const inside = iconLabel(control);
+    if (inside) return `${text} ${inside}`;
+    let sibling = control.previousElementSibling;
+    for (let hops = 0; sibling && hops < 2; hops += 1) {
+      const label = iconLabel(sibling);
+      if (label) return `${text} ${label}`;
+      sibling = sibling.previousElementSibling;
+    }
+    return text;
+  }
+
+  // A number, optionally with a K/M/B suffix, but never eating the word after it.
+  const NUMBER = /\d[\d.,\u202f\u00a0]*(?:\s?[KkMmBb](?![A-Za-z]))?\+?/g;
+
+  function maskNumbers(value) {
+    return value.replace(NUMBER, "—").replace(/\s{2,}/g, " ").trim();
+  }
+
+  function setText(node, value) {
+    if (!originalText.has(node)) originalText.set(node, node.nodeValue);
+    touchedTextNodes.add(node);
+    if (node.nodeValue !== value) node.nodeValue = value;
+  }
+
+  /** Counts inside elements that exist only to show a count, however nested. */
+  function maskCountElements(scope) {
+    for (const element of queryWithin(scope, countElementSelector())) {
+      if (isOurs(element)) continue;
+      const walker = document.createTreeWalker(element, NodeFilter.SHOW_TEXT);
+      let node = walker.nextNode();
+      while (node) {
+        const value = node.nodeValue || "";
+        if (value.length <= MAX_TEXT_LENGTH && BARE_COUNT.test(value)) setText(node, "—");
+        node = walker.nextNode();
+      }
+    }
+  }
+
+  /** A number on its own is a reward count if what surrounds it says so. */
+  function isRewardCount(element) {
+    return REWARD_CONTEXT.test(contextText(element)) ||
+      REWARD_NOUN_FIRST.test(followingText(element)) ||
+      REWARD_NOUN_LAST.test(precedingText(element));
+  }
+
+  function maskCounts(scope) {
+    const start = scope.nodeType === Node.DOCUMENT_NODE ? scope.body : scope;
+    if (!start || isOurs(start)) return;
+    const walker = document.createTreeWalker(start, NodeFilter.SHOW_TEXT);
+    let node = walker.nextNode();
+    while (node) {
+      const value = node.nodeValue || "";
+      if (value.length <= MAX_TEXT_LENGTH && /\d/.test(value)) {
+        const parent = node.parentElement;
+        if (parent && !parent.closest(SKIP_TEXT_PARENTS)) {
+          if (COUNT_WITH_NOUN.test(value)) setText(node, maskNumbers(value));
+          else if (BARE_COUNT.test(value) && isRewardCount(parent)) setText(node, "—");
+        }
+      }
+      node = walker.nextNode();
+    }
+  }
+
+  function maskAriaCounts(scope) {
+    for (const element of queryWithin(scope, "[aria-label]")) {
+      if (isOurs(element)) continue;
+      const label = element.getAttribute("aria-label") || "";
+      // Facebook labels each reaction "Love: 47 people" and leaves the word
+      // "reactions" on the group they sit in, so the surroundings count too.
+      if (!/\d/.test(label) || !(REWARD_CONTEXT.test(label) || REWARD_CONTEXT.test(contextText(element)))) continue;
+      const masked = maskNumbers(label);
+      if (masked === label) continue;
+      if (!originalAria.has(element)) originalAria.set(element, label);
+      touchedElements.add(element);
+      element.setAttribute("aria-label", masked);
+    }
+  }
+
+  function isInteractive(element) {
+    return Boolean(element.matches?.("a,button,input,select,textarea,[role='button'],[role='link'],[role='tab'],[role='menuitem']"));
+  }
+
+  function markBadge(element) {
+    if (element.classList.contains("decaf-badge")) return;
+    element.classList.add("decaf-badge");
+    touchedElements.add(element);
+  }
+
+  /** Badge-sized: a nudge in the corner of an icon, not a region of the page. */
+  function badgeSized(element) {
+    const rect = element.getBoundingClientRect?.();
+    return !(rect && (rect.width > 90 || rect.height > 46));
+  }
+
+  /**
+   * An element a site itself calls a badge. The name is the evidence, so the
+   * text is not examined: LinkedIn's badge holds "1" for the eye and "1 new
+   * notification" for a screen reader, and its red dot holds only the words.
+   */
+  function looksLikeBadge(element) {
+    if (isInteractive(element) || isOurs(element)) return false;
+    return badgeSized(element);
+  }
+
+  /** A background a site chose to be alarming: the red of an unread dot. */
+  function alarmingBackground(value) {
+    const [red, green, blue, alpha = 1] = (value.match(/[\d.]+/g) || []).map(Number);
+    if (!Number.isFinite(red) || !Number.isFinite(blue)) return false;
+    return alpha > 0.3 && red > 150 && green < 110 && blue < 110;
+  }
+
+  /**
+   * A red dot with no number in it. LinkedIn draws one over the Home icon with
+   * nothing to identify it: hashed class names, no text, no attributes. Its
+   * colour and its size are the only things left to go on.
+   */
+  function looksLikeAlertDot(element) {
+    if (isInteractive(element) || isOurs(element) || element.children.length) return false;
+    const rect = element.getBoundingClientRect?.();
+    if (!rect || rect.width < 4 || rect.width > 24 || rect.height < 4 || rect.height > 24) return false;
+    return alarmingBackground(getComputedStyle(element).backgroundColor);
+  }
+
+  /** An unnamed span in a navigation control, holding nothing but a count. */
+  function looksLikeCountBadge(element) {
+    if (isInteractive(element) || isOurs(element) || element.children.length) return false;
+    const text = element.textContent?.trim() || "";
+    // A dash is a count Decaf masked a moment ago, still a badge.
+    if (!text || text.length > 5 || !(BARE_COUNT.test(text) || text === "—")) return false;
+    return badgeSized(element);
+  }
+
+  /**
+   * Badges are marked, not removed. By default content.css only drains the color
+   * out of them so a real message still gets noticed; "Hide notification counts"
+   * turns the same mark into display: none.
+   */
+  function markBadges(scope) {
+    for (const element of queryWithin(scope, BADGE_SELECTOR)) {
+      if (looksLikeBadge(element)) markBadge(element);
+    }
+    // A small number inside a navigation control is a nudge, never content.
+    // Anything longer, or not inside a control, is left alone: page numbers and
+    // labels in a nav are real information.
+    for (const region of queryWithin(scope, BADGE_REGION_SELECTOR)) {
+      for (const element of region.querySelectorAll("span,div,em,strong,i,b")) {
+        if (!looksLikeCountBadge(element) && !looksLikeAlertDot(element)) continue;
+        if (!element.closest("a,button,[role='button'],[role='link'],[role='tab']")) continue;
+        markBadge(element);
+      }
+    }
+  }
+
+  function quietTitle() {
+    const title = document.title || "";
+    if (!TITLE_BADGE.test(title)) {
+      if (title !== maskedTitle) {
+        originalTitle = "";
+        maskedTitle = "";
+      }
+      return;
+    }
+    originalTitle = title;
+    maskedTitle = title.replace(TITLE_BADGE, "");
+    document.title = maskedTitle;
+  }
+
+  function restoreQuiet() {
+    for (const element of touchedElements) {
+      element.classList?.remove("decaf-badge", "decaf-feed-container", "decaf-comment-list");
+      if (originalAria.has(element)) {
+        const value = originalAria.get(element);
+        if (value === null) element.removeAttribute("aria-label");
+        else element.setAttribute("aria-label", value);
+        originalAria.delete(element);
+      }
+    }
+    touchedElements.clear();
+    for (const node of touchedTextNodes) {
+      if (originalText.has(node)) {
+        const value = originalText.get(node);
+        if (node.nodeValue !== value) node.nodeValue = value;
+        originalText.delete(node);
+      }
+    }
+    touchedTextNodes.clear();
+    if (maskedTitle && document.title === maskedTitle && originalTitle) document.title = originalTitle;
+    originalTitle = "";
+    maskedTitle = "";
+  }
+
+  /* -------------------------------------------------------- autoplay guard -- */
+
+  function isGuardedPlayback() {
+    if (!active || !settings?.pauseFeeds) return false;
+    if (route === "media") return false;
+    return !(route === "feed" && D.isPassActive(settings, site));
+  }
+
+  function onPlay(event) {
+    const video = event.target;
+    if (!video?.matches?.("video") || !active) return;
+    if (hidingFeed) {
+      // Nothing on a paused feed should be playing, in view or not.
+      video.pause();
+      return;
+    }
+    if (!isGuardedPlayback()) return;
+    // Audible playback, or playback right after a click, is intentional.
+    if (!video.muted) return;
+    if (Date.now() - lastGestureAt < GESTURE_WINDOW_MS) return;
+    video.pause();
+    video.removeAttribute("autoplay");
+  }
+
+  function pauseEveryVideo() {
+    for (const video of document.querySelectorAll("video")) {
+      try {
+        video.pause();
+      } catch (_) {
+        // Some players wrap pause(); nothing to do if it refuses.
+      }
+    }
+  }
+
+  function noteGesture() {
+    lastGestureAt = Date.now();
+  }
+
+  /* --------------------------------------------------------- paused feeds -- */
+
+  /**
+   * The containers content.css is emptying, outermost first. The notice goes
+   * inside one of them, which is why the stylesheet empties a container rather
+   * than hiding it: the container keeps its place in the site's layout, so
+   * nothing around it moves.
+   */
+  function findFeedAnchors() {
+    const matches = new Set();
+    // A container already found by shape stays the anchor: once it is hidden its
+    // items stop being rendered, so it could never be found a second time.
+    for (const element of document.querySelectorAll(".decaf-feed-container")) matches.add(element);
+    for (const selector of D.feedSelectors(site)) {
+      let found = [];
+      try {
+        found = document.querySelectorAll(selector);
+      } catch (_) {
+        continue;
+      }
+      for (const element of found) matches.add(element);
+    }
+    const list = Array.from(matches).filter((element) => element.parentElement);
+    const outermost = list.filter((element) => !list.some((other) => other !== element && other.contains(element)));
+    // Document order, so the notice lands where the feed started.
+    outermost.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
+    return outermost;
+  }
+
+  /**
+   * A container can be too narrow to hold the card, or sit inside something the
+   * site clips. Either way the card would be unreadable, so the placement is
+   * checked and the next container tried instead.
+   */
+  function isPlacedWell(element) {
+    if (!isRendered(element)) return false;
+    const rect = element.getBoundingClientRect?.();
+    if (!rect) return true;
+    if (!rect.width && !rect.height) return !hasLayout();
+    if (rect.width < 240) return false;
+    let parent = element.parentElement;
+    while (parent && parent !== root() && parent !== document.body) {
+      const style = getComputedStyle(parent);
+      if (style.overflowX === "hidden" || style.overflowY === "hidden") {
+        const box = parent.getBoundingClientRect();
+        // Clipped at the top or the sides is unreachable; below the fold is fine,
+        // because the page can be scrolled.
+        if (rect.top < box.top - 1 || rect.left < box.left - 1 || rect.right > box.right + 1) return false;
+      }
+      parent = parent.parentElement;
     }
     return true;
   }
 
-  function removeYouTubeGate({ restoreFocus = true } = {}) {
-    const restore = youtubeGateRestoreFocus;
-    const player = youtubeGate?.parentElement;
-    const hadGate = Boolean(youtubeGate);
-    youtubeGate?.remove();
-    youtubeGate = null;
-    youtubeGateRestoreFocus = null;
-    if (!restoreFocus || (!hadGate && !restore)) return;
-    if (focusWithoutScroll(restore)) return;
-    const fallback = player?.querySelector?.("video") || player || document.body;
-    focusWithoutScroll(fallback);
-  }
-
-  function clearStaleYouTubeFocusApprovals() {
-    if (!youtubeFocusApprovals.lockUntil) return;
-    const currentLockUntil = U.isLocked(settings) ? Number(settings.lockUntil) : 0;
-    if (youtubeFocusApprovals.lockUntil === currentLockUntil) return;
-    youtubeFocusApprovals = U.normalizeYouTubeFocusApprovals();
-    chrome.storage.local.remove(U.YOUTUBE_FOCUS_APPROVALS_KEY).catch(() => {});
-  }
-
-  function setApprovedYouTubePlayer(player = null) {
-    if (youtubeApprovedPlayer && youtubeApprovedPlayer !== player) {
-      youtubeApprovedPlayer.classList.remove("unaddictify-approved-player");
+  /**
+   * Marks the elements between the notice and the page root. While a feed is
+   * paused they must not clip it: a container sized for a feed can be shorter
+   * than the card in a small window, and the card would be cut off.
+   */
+  function markNoticePath() {
+    for (const element of document.querySelectorAll(".decaf-feed-path")) {
+      element.classList.remove("decaf-feed-path");
     }
-    youtubeApprovedPlayer = player;
-    youtubeApprovedPlayer?.classList.add("unaddictify-approved-player");
-    document.documentElement.classList.toggle("unaddictify-youtube-video-approved", Boolean(player));
+    if (!notice?.isConnected) return;
+    let parent = notice.parentElement;
+    while (parent && parent !== root() && parent !== document.body) {
+      parent.classList.add("decaf-feed-path");
+      touchedElements.add(parent);
+      parent = parent.parentElement;
+    }
   }
 
-  function createYouTubeGate(player, videoId, gateMode) {
-    const frictionAvailable = Boolean(settings.siteSettings.youtube.sabotageOpenedVideos);
-    const focusGate = gateMode === "focus";
-    const gate = document.createElement("div");
-    gate.className = "unaddictify-youtube-focus-gate";
-    gate.dataset.frictionAvailable = String(frictionAvailable);
-    gate.dataset.gateMode = gateMode;
-    gate.setAttribute("role", "dialog");
-    gate.setAttribute("aria-modal", "true");
-    gate.setAttribute("aria-labelledby", "unaddictify-youtube-gate-title");
-    gate.setAttribute("aria-describedby", "unaddictify-youtube-gate-description");
-    gate.tabIndex = -1;
+  function setFeedHost(element) {
+    for (const previous of document.querySelectorAll(".decaf-feed-host")) {
+      if (previous !== element) previous.classList.remove("decaf-feed-host");
+    }
+    if (!element || element.classList.contains("decaf-feed-host")) return;
+    element.classList.add("decaf-feed-host");
+    touchedElements.add(element);
+  }
 
-    const sheet = document.createElement("div");
-    sheet.className = "unaddictify-youtube-focus-sheet";
+  /**
+   * If a site has redesigned past every selector in the table, find the feed the
+   * hard way: the smallest thing that contains several feed items. Marking it
+   * lets the same CSS hide it, so a redesign degrades to a small flash of feed
+   * rather than a page that claims to be paused while it is not.
+   */
+  /** False in a layout-less environment (tests, print), where nothing can be measured. */
+  function hasLayout() {
+    return Boolean(document.body?.getClientRects?.().length);
+  }
 
-    const eyebrow = document.createElement("p");
-    eyebrow.className = "unaddictify-youtube-focus-eyebrow";
-    eyebrow.textContent = focusGate ? "Focus check" : "A quick check";
+  function isRendered(element) {
+    const rects = element.getClientRects?.();
+    if (!rects) return true;
+    if (rects.length) return true;
+    // Somewhere with no layout at all should still get the fallback rather than
+    // nothing.
+    return !hasLayout();
+  }
 
-    const heading = document.createElement("h2");
-    heading.id = "unaddictify-youtube-gate-title";
-    heading.textContent = "Is this video educational?";
-
-    const details = getYouTubeVideoDetails(player);
-    const title = document.createElement("p");
-    title.className = "unaddictify-youtube-focus-title";
-    title.textContent = details.title;
-
-    const meta = document.createElement("p");
-    meta.className = "unaddictify-youtube-focus-meta";
-    meta.textContent = details.meta;
-    meta.hidden = !details.meta;
-
-    const description = document.createElement("p");
-    description.id = "unaddictify-youtube-gate-description";
-    description.className = "unaddictify-youtube-focus-description";
-    description.setAttribute("aria-live", "polite");
-    description.textContent = focusGate
-      ? frictionAvailable
-        ? "If it is educational, let it play normally. Otherwise, keep your chosen friction in place."
-        : "Choose whether to play it normally or leave it paused. This choice applies only to this video until Focus Lock ends."
-      : frictionAvailable
-        ? "If it is educational, let it play normally. Otherwise, keep your chosen friction in place for this video."
-        : "Choose whether to play it normally or leave it paused for this video.";
-
-    const actions = document.createElement("div");
-    actions.className = "unaddictify-youtube-focus-actions";
-    actions.setAttribute("role", "group");
-    actions.setAttribute("aria-label", "Choose how to watch this video");
-
-    const approve = async (mode, button) => {
-      if (button.disabled) return;
-      const buttons = [...actions.querySelectorAll(".unaddictify-youtube-focus-button")];
-      buttons.forEach((item) => { item.disabled = true; });
-      button.textContent = "Opening…";
-      const previous = youtubeFocusApprovals;
-      let next = null;
-      if (focusGate) {
-        next = U.addYouTubeFocusApproval(previous, settings.lockUntil, videoId, mode);
-        youtubeFocusApprovals = next;
-      } else {
-        youtubeOpenedVideoChoices.set(videoId, mode);
-      }
-      syncYouTubeFocusGate();
-      const playPromise = player.querySelector("video")?.play?.();
-      playPromise?.catch?.(() => {});
-      if (!focusGate) return;
-      try {
-        await chrome.storage.local.set({ [U.YOUTUBE_FOCUS_APPROVALS_KEY]: next });
-      } catch (_) {
-        youtubeFocusApprovals = previous;
-        syncYouTubeFocusGate();
-      }
-    };
-
-    const createChoiceButton = (label, mode, style = "") => {
-      const button = document.createElement("button");
-      button.className = `unaddictify-youtube-focus-button${style ? ` ${style}` : ""}`;
-      button.type = "button";
-      button.textContent = label;
-      button.dataset.defaultLabel = label;
-      button.addEventListener("click", () => approve(mode, button));
-      return button;
-    };
-
-    actions.append(
-      createChoiceButton("Yes — play normally", "normal"),
-      ...(frictionAvailable
-        ? [createChoiceButton("Keep it less rewarding", "friction", "unaddictify-youtube-focus-button-secondary")]
-        : [])
+  /** Feed items that are still on screen, ignoring anything inside the notice. */
+  function visibleFeedItems() {
+    const selector = feedItemSelector();
+    return Array.from(document.querySelectorAll(selector)).filter(
+      (item) => !isOurs(item) && !notice?.contains(item) && isRendered(item)
     );
+  }
 
-    const keepPausedButton = document.createElement("button");
-    keepPausedButton.className = "unaddictify-youtube-focus-button unaddictify-youtube-focus-button-tertiary";
-    keepPausedButton.type = "button";
-    keepPausedButton.textContent = "Keep it paused";
-    keepPausedButton.addEventListener("click", () => {
-      if (keepPausedButton.disabled) return;
-      keepPausedButton.disabled = true;
-      keepPausedButton.textContent = "Video will stay paused";
-      gate.classList.add("unaddictify-youtube-focus-kept-paused");
-      description.textContent = "The video will stay paused. Choose a viewing mode whenever you are ready.";
-      actions.querySelector("button:not(:disabled)")?.focus?.({ preventScroll: true });
+  function commonAncestor(elements) {
+    let ancestor = elements[0];
+    for (const element of elements.slice(1)) {
+      while (ancestor && !ancestor.contains(element)) ancestor = ancestor.parentElement;
+      if (!ancestor) return null;
+    }
+    return ancestor;
+  }
+
+  /**
+   * The container of a set of feed items — and never a piece of one item. Without
+   * that rule the wrapper around a single post can be mistaken for the whole feed,
+   * which leaves one post on screen with a hole where its picture was. Climbing
+   * any higher is left to `enforceEmptyFeed`, so a header or sidebar that happens
+   * to sit above the feed is never swallowed.
+   */
+  function containerFor(items) {
+    const selector = feedItemSelector();
+    let ancestor = commonAncestor(items);
+    while (ancestor && ancestor !== document.body && ancestor !== root()) {
+      const inside = ancestor.closest?.(selector);
+      if (!inside) break;
+      ancestor = inside.parentElement;
+    }
+    if (!ancestor || ancestor === document.body || ancestor === root() || !ancestor.parentElement) return null;
+    return ancestor;
+  }
+
+  /**
+   * If a site has redesigned past every selector in the table, find the feed the
+   * hard way: the container holding several feed items. Marking it lets the same
+   * CSS empty it, so a redesign degrades to a brief flash of feed rather than a
+   * notice claiming a feed is paused while it is not.
+   */
+  function findFeedByShape() {
+    const items = visibleFeedItems().slice(0, 12);
+    if (items.length < 3) return null;
+    return containerFor(items);
+  }
+
+  function markFeedContainer(element) {
+    if (!element || element.classList.contains("decaf-feed-container")) return;
+    element.classList.add("decaf-feed-container");
+    touchedElements.add(element);
+  }
+
+  function clearFeedContainers() {
+    for (const element of document.querySelectorAll(".decaf-feed-container,.decaf-feed-host,.decaf-feed-path")) {
+      element.classList.remove("decaf-feed-container", "decaf-feed-host", "decaf-feed-path");
+    }
+  }
+
+  function holdHint() {
+    const count = D.passCount(settings, site);
+    const seconds = D.holdSeconds(count, D.isLocked(settings));
+    const parts = [`Hold for ${seconds} seconds`];
+    if (count > 0) parts.push(`${D.ordinal(count + 1)} time today`);
+    return parts.join(" · ");
+  }
+
+  function buildNotice() {
+    const container = make("div", "decaf-notice");
+    container.setAttribute("role", "group");
+    container.setAttribute("aria-label", "Feed paused by Decaf");
+
+    const title = make("p", "decaf-notice-title", `Decaf paused the ${D.siteLabel(site)} feed.`);
+    const body = make("p", "decaf-notice-body", "Search, messages and anything you open on purpose still work.");
+
+    const button = make("button", "decaf-notice-hold");
+    button.type = "button";
+    button.setAttribute("aria-describedby", "decaf-notice-hint");
+    const fill = make("span", "decaf-notice-fill");
+    fill.setAttribute("aria-hidden", "true");
+    const label = make("span", "decaf-notice-label", `Hold to open for ${D.PASS_MINUTES} minutes`);
+    button.append(fill, label);
+
+    const hint = make("p", "decaf-notice-hint", holdHint());
+    hint.id = "decaf-notice-hint";
+    const status = make("p", "decaf-notice-status");
+    status.setAttribute("role", "status");
+    status.setAttribute("aria-live", "polite");
+
+    container.append(title, body, button, hint, status);
+    noticeParts = { container, title, body, button, label, hint, status };
+    attachHold(button, label, status);
+    return container;
+  }
+
+  function stopHold({ silent = false } = {}) {
+    if (!hold) return;
+    clearTimeout(hold.timer);
+    const { button, label } = hold;
+    button.dataset.holding = "false";
+    button.classList.remove(hold.className);
+    label.textContent = `Hold to open for ${D.PASS_MINUTES} minutes`;
+    hold = null;
+    if (noticeParts) noticeParts.hint.hidden = false;
+    if (!silent && noticeParts) noticeParts.status.textContent = "";
+  }
+
+  function attachHold(button, label, status) {
+    const begin = (event) => {
+      if (hold) return;
+      if (event.type === "pointerdown" && event.button > 0) return;
+      const seconds = D.holdSeconds(D.passCount(settings, site), D.isLocked(settings));
+      const className = `decaf-hold-${seconds}`;
+      button.dataset.holding = "true";
+      button.classList.add(className);
+      label.textContent = "Keep holding…";
+      // The hint and the announcement would otherwise say the same thing twice.
+      if (noticeParts) noticeParts.hint.hidden = true;
+      status.textContent = `Keep holding for ${seconds} seconds.`;
+      hold = {
+        button,
+        label,
+        className,
+        timer: setTimeout(() => {
+          stopHold({ silent: true });
+          grantPass();
+        }, seconds * 1000)
+      };
+    };
+
+    button.addEventListener("pointerdown", (event) => {
+      button.setPointerCapture?.(event.pointerId);
+      begin(event);
     });
-    actions.append(keepPausedButton);
+    for (const type of ["pointerup", "pointercancel", "pointerleave", "blur"]) {
+      button.addEventListener(type, () => stopHold());
+    }
+    button.addEventListener("keydown", (event) => {
+      if (event.key !== " " && event.key !== "Enter") return;
+      event.preventDefault();
+      if (event.repeat) return;
+      begin(event);
+    });
+    button.addEventListener("keyup", (event) => {
+      if (event.key === " " || event.key === "Enter") stopHold();
+    });
+  }
 
-    gate.addEventListener("keydown", (event) => {
-      if (event.key === "Escape") {
-        event.preventDefault();
-        keepPausedButton.click();
+  /**
+   * A page that was scrolled before the feed was paused can leave the card above
+   * the fold, which reads as a card that has been cut off. Bring it into view the
+   * first time it is placed, and never fight the person's own scrolling after that.
+   */
+  function revealNotice() {
+    if (!hasLayout() || typeof notice.scrollIntoView !== "function") return;
+    const rect = notice.getBoundingClientRect();
+    const height = window.innerHeight || root().clientHeight;
+    if (rect.top >= 0 && rect.bottom <= height) return;
+    try {
+      notice.scrollIntoView({ block: "nearest", inline: "nearest" });
+    } catch (_) {
+      notice.scrollIntoView();
+    }
+  }
+
+  const DROP_CLASSES = ["decaf-drop-1", "decaf-drop-2", "decaf-drop-3", "decaf-drop-4"];
+
+  /**
+   * Sites put translucent overlays under their fixed header — YouTube's
+   * #frosted-glass reaches 56px below the masthead — and they paint over the top
+   * of the card. Step the card down until its top edge is in the clear.
+   */
+  function clearTopOverlay() {
+    if (!hasLayout() || !notice) return;
+    notice.classList.remove(...DROP_CLASSES);
+    for (const className of DROP_CLASSES) {
+      const rect = notice.getBoundingClientRect();
+      if (rect.top < 0) return;
+      const covering = document.elementFromPoint(Math.round(rect.left + rect.width / 2), Math.round(rect.top + 2));
+      if (!covering || covering === notice || notice.contains(covering)) return;
+      let element = covering;
+      let overlay = null;
+      while (element && element !== root()) {
+        const position = getComputedStyle(element).position;
+        if (position === "fixed" || position === "sticky") {
+          overlay = element;
+          break;
+        }
+        element = element.parentElement;
+      }
+      if (!overlay) return;
+      notice.classList.add(className);
+    }
+  }
+
+  function placeNotice(candidates) {
+    if (notice.isConnected && candidates.includes(notice.parentElement) && isPlacedWell(notice)) {
+      setFeedHost(notice.parentElement);
+      markNoticePath();
+      clearTopOverlay();
+      return true;
+    }
+    // A container can sit inside something the site hides or clips, so try each
+    // one and keep the placement that is genuinely readable.
+    for (const candidate of candidates) {
+      candidate.prepend(notice);
+      setFeedHost(candidate);
+      markNoticePath();
+      if (isPlacedWell(notice)) {
+        revealNotice();
+        clearTopOverlay();
+        return true;
+      }
+    }
+    setFeedHost(null);
+    document.body.prepend(notice);
+    markNoticePath();
+    revealNotice();
+    clearTopOverlay();
+    return false;
+  }
+
+  /**
+   * Last line of defence: if any feed item is still on screen after the notice is
+   * placed, the container Decaf chose was the wrong one. Empty the container those
+   * leftovers actually live in and place the notice again.
+   */
+  function enforceEmptyFeed() {
+    // Without layout there is no way to tell what is on screen, and the check
+    // would escalate against elements the stylesheet has already dealt with.
+    if (!hasLayout()) return;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      const leftovers = visibleFeedItems();
+      if (!leftovers.length) return;
+      const container = containerFor(leftovers.slice(0, 12));
+      if (!container) return;
+      // Never hide the card itself, and never loop on a container that has
+      // already been emptied.
+      if (notice.contains(container)) return;
+      if (container.classList.contains("decaf-feed-container")) return;
+      markFeedContainer(container);
+      placeNotice(findFeedAnchors());
+    }
+  }
+
+  function syncNotice() {
+    if (!hidingFeed) {
+      removeNotice();
+      return;
+    }
+    if (!document.body) return;
+
+    const candidates = findFeedAnchors();
+    if (!candidates.length) {
+      // Nothing feed-shaped is on the page: an interstitial, a sign-in wall, or
+      // markup Decaf no longer recognizes. Look for the feed by its items, and
+      // if there is none, say nothing rather than claim a feed was paused.
+      const shaped = findFeedByShape();
+      if (!shaped) {
+        removeNotice();
         return;
       }
-      if (event.key !== "Tab") return;
-      const focusable = [...gate.querySelectorAll("button:not(:disabled)")];
-      if (!focusable.length) return;
-      const first = focusable[0];
-      const last = focusable[focusable.length - 1];
-      if (event.shiftKey && document.activeElement === first) {
-        event.preventDefault();
-        last.focus();
-      } else if (!event.shiftKey && document.activeElement === last) {
-        event.preventDefault();
-        first.focus();
-      }
+      markFeedContainer(shaped);
+      candidates.push(shaped);
+    }
+
+    if (!notice) notice = buildNotice();
+    notice.classList.toggle("decaf-dark", pageIsDark());
+    noticeParts.title.textContent = `Decaf paused the ${D.siteLabel(site)} feed.`;
+    noticeParts.hint.textContent = holdHint();
+    if (passEnded) noticeParts.status.textContent = `Your ${D.PASS_MINUTES} minutes are up.`;
+
+    placeNotice(candidates);
+    enforceEmptyFeed();
+  }
+
+  function removeNotice() {
+    clearFeedContainers();
+    if (!notice) return;
+    stopHold({ silent: true });
+    notice.remove();
+    notice = null;
+    noticeParts = null;
+  }
+
+  async function grantPass() {
+    const next = D.grantPass(settings, site);
+    const patch = D.createStoragePatch(settings, next);
+    settings = next;
+    passEnded = false;
+    apply();
+    showChip(`Feed open for ${D.PASS_MINUTES} minutes`);
+    try {
+      await chrome.storage.local.set(patch);
+    } catch (_) {
+      // The pass still applies to this tab even if storage is unavailable.
+    }
+  }
+
+  /* -------------------------------------------------------- chip and pill -- */
+
+  function showChip(message) {
+    if (!document.body) return;
+    if (!chip) {
+      chip = make("div", "decaf-chip");
+      chip.setAttribute("role", "status");
+      chip.setAttribute("aria-live", "polite");
+    }
+    chip.textContent = message;
+    if (!chip.isConnected) document.body.append(chip);
+    clearTimeout(chipHideTimer);
+    chipHideTimer = setTimeout(hideChip, 4200);
+  }
+
+  function hideChip() {
+    clearTimeout(chipHideTimer);
+    chipHideTimer = null;
+    chip?.remove();
+  }
+
+  /**
+   * Everything is grayscale, including what you opened. Some things genuinely
+   * need color, so this offers it for this one page — and asks again next time.
+   */
+  function syncPill() {
+    const wanted = active && route === "media" && !colorGranted;
+    if (!wanted || !document.body) {
+      pill?.remove();
+      return;
+    }
+    if (!pill) {
+      pill = make("button", "decaf-pill", "Show in color");
+      pill.type = "button";
+      pill.title = "Show this page's video or photo in full color until you leave it";
+      pill.addEventListener("click", () => {
+        colorGranted = true;
+        apply();
+        showChip("Full color, just for this page");
+      });
+    }
+    if (!pill.isConnected) document.body.append(pill);
+    placePill();
+  }
+
+  /**
+   * True when a site keeps something of its own at this point: anything pinned
+   * to the window, or a small control floating over the page. A big link is not
+   * counted, because a photo or a pin fills the window wherever the pill goes.
+   */
+  function siteFurnitureAt(x, y) {
+    if (x < 0 || y < 0 || x > innerWidth || y > innerHeight) return true;
+    return document.elementsFromPoint(x, y).some((element) => {
+      if (isOurs(element) || element === document.body || element === root()) return false;
+      const position = getComputedStyle(element).position;
+      if (position === "fixed" || position === "sticky") return true;
+      if (!isInteractive(element)) return false;
+      const rect = element.getBoundingClientRect();
+      return rect.width <= 200 && rect.height <= 200;
     });
-
-    sheet.append(eyebrow, heading, title, meta, description, actions);
-    gate.append(sheet);
-    return gate;
   }
 
-  function syncYouTubeFocusGate() {
-    if (currentSite !== "youtube") {
-      removeYouTubeGate({ restoreFocus: true });
-      setApprovedYouTubePlayer();
+  /**
+   * Sites park their own furniture in the bottom-right corner: Instagram's
+   * message dock, Threads' compose button, X's pair of round buttons, Twitch's
+   * promo bar. The pill tries the corner first, then above it, then beside it,
+   * and settles in the first place nothing of the site's is already sitting.
+   * Docks often arrive after the page does, so the answer is checked again a
+   * moment later.
+   */
+  function placePill() {
+    if (!pill?.isConnected || !hasLayout() || !document.elementsFromPoint) return;
+    const rect = pill.getBoundingClientRect();
+    if (rect.width) {
+      const spot = PILL_SPOTS.find(({ right, bottom }) => {
+        const top = innerHeight - bottom - rect.height;
+        const left = innerWidth - right - rect.width;
+        // Three points across the pill: a dock can be narrow or wide.
+        return ![0.1, 0.5, 0.9].some((along) =>
+          siteFurnitureAt(left + rect.width * along, top + rect.height / 2));
+      }) || PILL_SPOTS[PILL_SPOTS.length - 1];
+      for (const candidate of PILL_SPOTS) {
+        for (const name of candidate.classes) pill.classList.toggle(name, spot.classes.includes(name));
+      }
+    }
+    if (!pillCheckTimer) {
+      pillCheckTimer = setTimeout(() => {
+        pillCheckTimer = null;
+        if (pill?.isConnected) placePill();
+      }, 2500);
+    }
+  }
+
+  /**
+   * Instagram's post page has no <article> and no comment hook: the caption and the
+   * comments share one scrolling panel. Mark the panel so the stylesheet can hide
+   * everything after the caption.
+   */
+  function syncCommentPanel() {
+    const wanted = active && settings.hideComments && site === "instagram" && route === "media";
+    for (const element of document.querySelectorAll(".decaf-comment-list")) {
+      if (!wanted) element.classList.remove("decaf-comment-list");
+    }
+    if (!wanted || !hasLayout()) return;
+    const main = document.querySelector("main");
+    if (!main || main.querySelector(".decaf-comment-list")) return;
+    let looked = 0;
+    for (const element of main.querySelectorAll("div")) {
+      if (looked > 600) return;
+      looked += 1;
+      // Cheap tests first: reading style for every div on this page is enough to
+      // make Instagram stutter.
+      if (element.children.length !== 1) continue;
+      if (element.scrollHeight <= element.clientHeight + 20) continue;
+      if (isOurs(element)) continue;
+      if (!/auto|scroll/.test(getComputedStyle(element).overflowY)) continue;
+      if (element.querySelectorAll("a[href^='/']").length < 3) continue;
+      element.classList.add("decaf-comment-list");
+      touchedElements.add(element);
       return;
     }
-
-    const player = document.querySelector("#movie_player");
-    const videoId = currentYouTubeVideoId();
-    if (!player || !videoId || !active) {
-      removeYouTubeGate({ restoreFocus: true });
-      setApprovedYouTubePlayer();
-      return;
-    }
-
-    const gateMode = getYouTubeGateMode(videoId);
-    if (!gateMode) {
-      removeYouTubeGate({ restoreFocus: true });
-      const playbackMode = getYouTubePlaybackMode(videoId);
-      const restoreNormalPlayer = !settings.siteSettings.youtube.sabotageOpenedVideos || playbackMode === "normal";
-      setApprovedYouTubePlayer(restoreNormalPlayer ? player : null);
-      return;
-    }
-
-    setApprovedYouTubePlayer();
-    for (const video of player.querySelectorAll("video")) video.pause();
-    const frictionAvailable = Boolean(settings.siteSettings.youtube.sabotageOpenedVideos);
-    if (
-      !youtubeGate ||
-      youtubeGate.parentElement !== player ||
-      youtubeGate.dataset.videoId !== videoId ||
-      youtubeGate.dataset.gateMode !== gateMode ||
-      youtubeGate.dataset.frictionAvailable !== String(frictionAvailable)
-    ) {
-      const previousFocus = document.activeElement;
-      const focusToRestore = previousFocus && !youtubeGate?.contains(previousFocus) ? previousFocus : null;
-      removeYouTubeGate({ restoreFocus: false });
-      youtubeGateRestoreFocus = focusToRestore;
-      youtubeGate = createYouTubeGate(player, videoId, gateMode);
-      youtubeGate.dataset.videoId = videoId;
-      player.append(youtubeGate);
-      youtubeGate.querySelector(".unaddictify-youtube-focus-button")?.focus?.({ preventScroll: true });
-    } else {
-      const details = getYouTubeVideoDetails(player);
-      const title = youtubeGate.querySelector(".unaddictify-youtube-focus-title");
-      const meta = youtubeGate.querySelector(".unaddictify-youtube-focus-meta");
-      if (title) title.textContent = details.title;
-      if (meta) {
-        meta.textContent = details.meta;
-        meta.hidden = !details.meta;
-      }
-    }
   }
 
-  function scheduleYouTubeGateSync() {
-    if (youtubeGateFrame !== null) return;
-    youtubeGateFrame = window.requestAnimationFrame(() => {
-      youtubeGateFrame = null;
-      syncYouTubeFocusGate();
-    });
+  function syncSurfaces() {
+    syncNotice();
+    syncPill();
+    syncCommentPanel();
   }
 
-  function guardYouTubePlayback(event) {
-    if (event.target?.matches?.("video") && shouldGateYouTubeVideo()) {
-      event.target.pause();
-      scheduleYouTubeGateSync();
+  /* ------------------------------------------------------------- lifecycle -- */
+
+  function clearBoot() {
+    clearTimeout(bootTimer);
+    bootTimer = null;
+    root().classList.remove("decaf-boot");
+  }
+
+  function expectedClasses() {
+    if (!active || !site || !route) return [];
+    const classes = ["decaf-on", `decaf-site-${site}`, `decaf-${route}`];
+    if (settings.pauseFeeds) classes.push("decaf-calm");
+    if (hidingFeed) classes.push("decaf-hide-feed");
+    if (settings.hideComments) classes.push("decaf-hide-comments");
+    if (settings.upsideDown) classes.push("decaf-upside-down");
+    if (settings.hideBadges) classes.push("decaf-hide-badges");
+    if (colorGranted) classes.push("decaf-color");
+    return classes;
+  }
+
+  function syncRootClasses() {
+    const element = root();
+    const expected = expectedClasses();
+    for (const className of ROOT_CLASSES) {
+      if (!expected.includes(className)) element.classList.remove(className);
+    }
+    for (const className of expected) element.classList.add(className);
+  }
+
+  function schedulePassRefresh() {
+    clearTimeout(passTimer);
+    clearTimeout(chipTimer);
+    passTimer = null;
+    chipTimer = null;
+    if (!active || !settings?.pauseFeeds) return;
+    const until = D.passUntil(settings, site);
+    if (!until) return;
+    const remaining = until - Date.now();
+    passTimer = setTimeout(() => {
+      passTimer = null;
+      passEnded = true;
+      apply();
+    }, Math.min(2147483000, remaining + 60));
+    if (remaining > 30000) {
+      chipTimer = setTimeout(() => {
+        chipTimer = null;
+        if (D.isPassActive(settings, site)) showChip("30 seconds left");
+      }, remaining - 30000);
     }
   }
 
-  function rememberText(node) {
-    const state = originalText.get(node);
-    if (!state) originalText.set(node, { original: node.nodeValue, masked: "" });
-    else if (node.nodeValue !== state.masked) {
-      state.original = node.nodeValue;
-      state.masked = "";
-    }
-    touched.add(node);
-  }
-
-  function rememberAria(element) {
-    const value = element.getAttribute("aria-label");
-    const state = originalAria.get(element);
-    if (!state) originalAria.set(element, { original: value, masked: "" });
-    else if (value !== state.masked) {
-      state.original = value;
-      state.masked = "";
-    }
-    touched.add(element);
-  }
-
-  function isProfileMedia(element) {
-    if (!element?.matches?.("img")) return false;
-    if (isDiscordProfileImage(element)) return true;
-    const source = [
-      element.currentSrc,
-      element.src,
-      element.getAttribute("src"),
-      element.getAttribute("srcset"),
-      element.getAttribute("data-src"),
-      element.getAttribute("data-lazy-src")
-    ].filter(Boolean).join(" ");
-    const alt = element.getAttribute("alt") || "";
-    if (currentSite === "linkedin" &&
-      /(?:licdn\.com|linkedin\.com\/dms\/image)/i.test(source) &&
-      !element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`)) return true;
-    return Boolean(
-      /(?:avatar|profile picture|profile photo|headshot|portrait)/i.test(alt) ||
-      element.closest(
-        "[class*='avatar' i], [class*='profile' i], [data-testid*='avatar' i], [data-testid*='profile' i], [aria-label*='avatar' i], [aria-label*='profile picture' i]"
-      )
-    );
-  }
-
-  function isVisualImage(element) {
-    if (element.matches("canvas")) return Boolean(element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`));
-    if (element.matches("video")) {
-      return Boolean(
-        element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`) ||
-        (currentSite === "youtube" && element.closest("#movie_player") && settings.siteSettings.youtube.sabotageOpenedVideos)
-      );
-    }
-    if (!element.matches("img")) return false;
-    if (isProfileMedia(element)) return Boolean(settings.features.hideProfileMedia);
-    if (isDiscordEmoji(element)) return false;
-    if (element.closest("header, nav, [role='banner'], [role='navigation'], button, [role='button']")) return false;
-    if (isYouTubeShortsMedia(element) || element.closest(CARD_SELECTOR)) return true;
-    if (currentSite === "linkedin" &&
-      element.closest(".feed-shared-update-v2, [class*='feed-shared' i], [class*='update-components' i], [data-urn*='activity' i]")) return true;
-    // Search chrome, chat avatars, and utility logos should not be treated as
-    // feed media just because they happen to be large images. A semantic media
-    // wrapper is enough to include sites whose card markup is less stable.
-    if (element.closest(`${MEDIA_WRAPPER_SELECTOR}, [role='img']`)) return true;
-    if (CARD_ONLY_IMAGE_SITES.has(currentSite)) return false;
-    return (element.naturalWidth || 0) >= 160 || (element.width || 0) >= 160;
-  }
-
-  function isDiscordProfileImage(element) {
-    if (currentSite !== "discord" || !element?.matches?.("img")) return false;
-    const source = [
-      element.currentSrc,
-      element.src,
-      element.getAttribute("src"),
-      element.getAttribute("srcset"),
-      element.getAttribute("data-src"),
-      element.getAttribute("data-lazy-src")
-    ].filter(Boolean).join(" ");
-    return Boolean(
-      element.closest("[class*='avatar' i], [data-list-item-id^='guildsnav'], [class*='guildIcon' i], [class*='serverIcon' i]") ||
-      /(?:discordapp\.com|discord\.com)\/(?:icons|avatars|team-icons|app-icons|banners)\//i.test(source)
-    );
-  }
-
-  function isDiscordEmoji(element) {
-    return currentSite === "discord" && Boolean(element?.closest?.("[class*='emoji' i], [data-type='emoji']"));
-  }
-
-  function isThumbnailMedia(element) {
-    return isYouTubeShortsMedia(element) || Boolean(element.closest?.(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`));
-  }
-
-  function isVisualMediaSurface(element) {
-    if (element.matches(".ytp-cued-thumbnail-overlay-image, .ytp-thumbnail-overlay-image")) return true;
-    return element.matches("[style*='background-image' i]") && Boolean(
-      element.closest(`${CARD_SELECTOR}, ${MEDIA_WRAPPER_SELECTOR}`) ||
-      element.matches(`${MEDIA_WRAPPER_SELECTOR}, [role='img']`)
-    );
-  }
-
-  function isInteractiveControl(element) {
-    return Boolean(element?.matches?.("a, button, input, select, textarea, [role='button'], [role='link'], [role='tab'], [role='menuitem']"));
-  }
-
-  function isCompactBadge(element) {
-    if (isInteractiveControl(element)) return false;
-    const rect = element?.getBoundingClientRect?.();
-    return !rect || (rect.width <= 80 && rect.height <= 40);
-  }
-
-  function markNotificationBadge(element) {
-    if (isCompactBadge(element)) addClass(element, "unaddictify-notification-badge");
-  }
-
-  function setMediaClass(element, className, enabled) {
-    if (!element?.classList) return;
-    const hasClass = element.classList.contains(className);
-    if (enabled === hasClass) return;
-    if (enabled) element.classList.add(className);
-    else element.classList.remove(className);
-    touched.add(element);
-  }
-
-  function syncMediaElement(element) {
-    const profile = isProfileMedia(element);
-    const visual = profile ? Boolean(settings.features.hideProfileMedia) : isVisualImage(element);
-    setMediaClass(element, "unaddictify-profile-media", profile);
-    setMediaClass(element, "unaddictify-media", visual);
-    setMediaClass(element, "unaddictify-thumbnail", visual && isThumbnailMedia(element));
-    setMediaClass(element, "unaddictify-upside-down-media", visual && settings.features.upsideDownMedia);
-  }
-
-  function scanMedia(root = document) {
-    const mediaSelectors = ["img, video, canvas, .unaddictify-media", ...(SITE_MEDIA_FALLBACK_SELECTORS[currentSite] || [])];
-    const media = queryWithin(root, mediaSelectors.join(","));
-    for (const element of media) {
-      syncMediaElement(element);
-    }
-
-    for (const element of queryWithin(root, `${MEDIA_SURFACE_SELECTOR}, .unaddictify-media-surface`)) {
-      const visual = settings.features.stripMedia || isVisualMediaSurface(element);
-      setMediaClass(element, "unaddictify-media-surface", visual);
-      setMediaClass(element, "unaddictify-thumbnail", visual);
-      setMediaClass(element, "unaddictify-upside-down-media", visual && settings.features.upsideDownMedia);
-    }
-  }
-
-  function hideShortsTabs(root = document) {
-    if (currentSite !== "youtube" || !settings.siteSettings.youtube.hideShortsTab) return;
-    for (const element of queryWithin(root, SHORTS_TAB_SELECTORS.join(","))) {
-      const tab = element.closest("ytd-guide-entry-renderer, ytd-mini-guide-entry-renderer, yt-chip-cloud-chip-renderer, ytm-search-filter-chip-renderer, yt-search-filter-chip-renderer, tp-yt-paper-tab, [role='tab']") || element;
-      const label = [tab.getAttribute?.("aria-label"), tab.getAttribute?.("title"), tab.textContent]
-        .find((value) => value?.trim())?.trim().replace(/\s+/g, " ") || "";
-      if (/^shorts(?:\s+tab)?$/i.test(label)) addClass(tab, "unaddictify-hidden-tab");
-    }
-  }
-
-  function syncYouTubeContext() {
-    if (currentSite !== "youtube") return;
-    const root = document.documentElement;
-    root.classList.toggle("unaddictify-youtube-shorts", isShortsPage());
-    syncYouTubeFocusGate();
-  }
-
-  function scheduleBypassRefresh() {
-    window.clearTimeout(bypassTimer);
-    bypassTimer = null;
-    const remaining = Number(settings?.bypassUntil) - Date.now();
-    if (remaining <= 0) return;
-    bypassTimer = window.setTimeout(() => {
-      bypassTimer = null;
-      applyRootState();
-    }, Math.min(2147483647, remaining + 50));
-  }
-
-  function scheduleFocusLockRefresh() {
-    window.clearTimeout(focusLockTimer);
-    focusLockTimer = null;
-    const remaining = Number(settings?.lockUntil) - Date.now();
-    if (remaining <= 0) return;
-    focusLockTimer = window.setTimeout(() => {
-      focusLockTimer = null;
-      clearStaleYouTubeFocusApprovals();
-      syncYouTubeFocusGate();
-    }, Math.min(2147483647, remaining + 50));
-  }
-
-  function hideNotificationCues(root = document) {
-    if (!settings.features.hideNotificationBadges) return;
-    const selectors = [...new Set([
-      ...GENERIC_BADGE_SELECTORS,
-      ...(BADGE_SELECTORS[currentSite] || [])
-    ])];
-    for (const element of queryWithin(root, selectors.join(","))) {
-      const label = [element.getAttribute?.("aria-label"), element.getAttribute?.("title")]
-        .filter(Boolean).join(" ");
-      const text = element.textContent?.trim() || "";
-      const className = element.className?.toString?.() || "";
-      const badgeLike = /badge|dot|count/i.test(className) ||
-        (/(unread|mention)/i.test(className) && (COUNT_ONLY_PATTERN.test(text) || text.length <= 8)) ||
-        COUNT_ONLY_PATTERN.test(text) ||
-        (/\d/.test(label) && /(badge|count|unread|mention)/i.test(label));
-      if (badgeLike) markNotificationBadge(element);
-      // Never hide a whole notification or conversation host. Only hide a
-      // small numeric child when a site exposes the badge on its container.
-      for (const child of element.children || []) {
-        const childText = child.textContent?.trim() || "";
-        if (childText.length <= 8 && COUNT_ONLY_PATTERN.test(childText)) markNotificationBadge(child);
-      }
-      for (const child of element.querySelectorAll?.(BADGE_DESCENDANT_SELECTOR) || []) {
-        const childText = child.textContent?.trim() || "";
-        if (childText.length <= 8 && COUNT_ONLY_PATTERN.test(childText)) markNotificationBadge(child);
-      }
-    }
-    for (const element of queryWithin(root, "[aria-label*='notification' i], [aria-label*='unread' i], [aria-label*='mention' i]")) {
-      const label = element.getAttribute("aria-label") || "";
-      if (!/notification|unread|mention/i.test(label) || !/\d/.test(label)) continue;
-      rememberAria(element);
-      const masked = label.replace(/\d[\d,.]*\s*(?:[KMB]+)?/gi, "").replace(/\s{2,}/g, " ").trim();
-      element.setAttribute("aria-label", masked);
-      originalAria.get(element).masked = masked;
-      for (const child of element.querySelectorAll?.(BADGE_DESCENDANT_SELECTOR) || []) {
-        const childText = child.textContent?.trim() || "";
-        if (childText.length <= 8 && COUNT_ONLY_PATTERN.test(childText)) markNotificationBadge(child);
-      }
-    }
-  }
-
-  function maskEngagementCounts(root = document) {
-    if (!settings.features.hideEngagementCounts) return;
-    const scope = root.nodeType === Node.DOCUMENT_NODE ? root.body : root;
-    if (!scope) return;
-    const walker = document.createTreeWalker(scope, NodeFilter.SHOW_TEXT);
-    let node;
-    while ((node = walker.nextNode())) {
-      const parent = node.parentElement;
-      if (!parent || !parent.closest(CARD_SELECTOR) || parent.closest("script, style, textarea, input, select, option, code, pre")) continue;
-      const raw = node.nodeValue;
-      if (!raw || raw.trim().length > 120 || !ENGAGEMENT_PATTERN.test(raw)) continue;
-      rememberText(node);
-      const state = originalText.get(node);
-      state.masked = raw.replace(/\d[\d,.]*\s*(?:[KMB]+)?/gi, "—");
-      node.nodeValue = state.masked;
-    }
-  }
-
-  function updateAriaCounts(root = document) {
-    if (!settings.features.hideEngagementCounts) return;
-    for (const element of queryWithin(root, `${CARD_SELECTOR} [aria-label]`)) {
-      const label = element.getAttribute("aria-label") || "";
-      if (!/\d/.test(label) || !/(like|comment|view|follow|vote|share)/i.test(label)) continue;
-      rememberAria(element);
-      const masked = label.replace(/\d[\d,.]*\s*(?:[KMB]+)?/gi, "").replace(/\s{2,}/g, " ").trim();
-      element.setAttribute("aria-label", masked);
-      originalAria.get(element).masked = masked;
-    }
-  }
-
-  function findSmallItem(element) {
-    return element.closest("article, [role='article'], [data-testid='post-container'], li, [role='tab']") || element;
-  }
-
-  function findNavigationItem(element) {
-    return element.closest("a, button, [role='tab'], [role='link'], li, [role='listitem']") || findSmallItem(element);
-  }
-
-  function findSection(element) {
-    return element.closest("section, [role='region'], [data-attrid], [data-testid='cellInnerDiv'], article, li") || element;
-  }
-
-  function elementLabel(element) {
-    return [element.getAttribute?.("aria-label"), element.getAttribute?.("title"), element.textContent]
-      .find((value) => value?.trim())?.trim().replace(/\s+/g, " ") || "";
-  }
-
-  function hideLabeledItems(root, selectors, pattern, target = findNavigationItem) {
-    for (const element of queryWithin(root, selectors.join(","))) {
-      if (pattern.test(elementLabel(element))) addClass(target(element), "unaddictify-hidden-site-item");
-    }
-  }
-
-  function getDiscoveryOwners(element) {
-    const owners = [];
-    let current = element;
-    let depth = 0;
-    while (current && depth < 6) {
-      if (current.matches?.(DISCOVERY_TARGET_SELECTOR)) owners.push(current);
-      current = current.parentElement;
-      depth += 1;
-    }
-    const broadOwner = element.closest?.("section, [role='region']");
-    if (broadOwner && !owners.includes(broadOwner)) owners.push(broadOwner);
-    return owners;
-  }
-
-  function discoveryLabel(element, pattern = DISCOVERY_COPY_PATTERN) {
-    const discoveryOwners = getDiscoveryOwners(element);
-    const semanticNodes = [
-      ...discoveryOwners,
-      element,
-      ...(element.querySelectorAll?.(
-        "h1, h2, h3, h4, h5, h6, [role='heading'], [aria-label], [title], [data-testid*='recommend' i], [data-testid*='suggest' i], [data-pagelet*='suggest' i]"
-      ) || [])
-    ].slice(0, 48);
-    const labels = [];
-    const seen = new Set();
-    const addLabel = (value) => {
-      const text = value?.trim().replace(/\s+/g, " ") || "";
-      if (text && !seen.has(text)) {
-        seen.add(text);
-        labels.push(text);
-      }
-    };
-
-    for (const node of semanticNodes) {
-      const semanticText = node.matches?.("h1, h2, h3, h4, h5, h6, [role='heading']") ? node.textContent : "";
-      addLabel([
-        node.getAttribute?.("aria-label"),
-        node.getAttribute?.("title"),
-        node.getAttribute?.("data-testid"),
-        node.getAttribute?.("data-pagelet"),
-        node.getAttribute?.("data-a-target"),
-        node.getAttribute?.("data-attrid"),
-        semanticText
-      ].filter(Boolean).join(" "));
-    }
-
-    // Recommendation labels are often plain spans or divs with no semantic
-    // attribute. Only retain short leaf-ish text that actually matches the
-    // discovery vocabulary; never copy the whole card's text into the label.
-    const ordinaryNodes = [
-      ...discoveryOwners.filter((owner) => owner !== element && owner.matches?.(DISCOVERY_TEXT_SELECTOR)),
-      ...(element.matches?.(DISCOVERY_TEXT_SELECTOR) ? [element] : []),
-      ...(element.querySelectorAll?.(DISCOVERY_TEXT_SELECTOR) || [])
-    ].slice(0, 96);
-    for (const node of ordinaryNodes) {
-      if (node.closest?.("script, style, textarea, input, select, option")) continue;
-      if (node.children?.length > 2) continue;
-      const text = node.textContent?.trim().replace(/\s+/g, " ") || "";
-      if (text.length > 120 || !pattern.test(text)) continue;
-      addLabel(text);
-    }
-    return labels.join(" ");
-  }
-
-  function hideCardsMatching(root, selectors, pattern) {
-    for (const element of queryWithin(root, selectors)) {
-      if (pattern.test(discoveryLabel(element, pattern))) addClass(findDiscoveryCard(element), "unaddictify-hidden-site-item");
-    }
-  }
-
-  function findDiscoveryCard(element) {
-    return element.closest(
-      `article, [role='article'], [data-testid='cellInnerDiv'], [data-testid='post-container'], [data-test-id='pin'], [data-test-id='pinWrapper'], ${DISCOVERY_SCOPE_SELECTOR}, li`
-    ) || element.parentElement || element;
-  }
-
-  function hideInstagramReels(root = document) {
-    if (currentSite !== "instagram" || !settings.siteSettings.instagram.hideReels) return;
-    const selectors = [
-      "a[href='/reels']",
-      "a[href='/reels/']",
-      "a[href*='/reels/']",
-      "[role='tab'][aria-label='Reels' i]",
-      "[aria-label='Reels' i]"
-    ];
-    for (const element of queryWithin(root, selectors.join(","))) addClass(findSmallItem(element), "unaddictify-hidden-site-item");
-  }
-
-  function hideTikTokNavigation(root = document) {
-    const options = settings.siteSettings.tiktok || {};
-    if (options.hideLiveTab) {
-      hideLabeledItems(root, [
-        "a[href='/live']",
-        "a[href='/live/']",
-        "[data-e2e='nav-live']",
-        "[data-e2e='nav-live-link']",
-        "[role='tab'][aria-label*='live' i]"
-      ], /^live(?:\s+now)?$/i);
-    }
-    if (options.hideShopTab) {
-      hideLabeledItems(root, [
-        "a[href='/shop']",
-        "a[href='/shop/']",
-        "[data-e2e='nav-shop']",
-        "[data-e2e='nav-shop-link']",
-        "[role='tab'][aria-label*='shop' i]"
-      ], /^shop(?:ping)?$/i);
-    }
-  }
-
-  function hideTwitchDiscovery(root = document) {
-    const options = settings.siteSettings.twitch || {};
-    if (options.hideDiscovery) {
-      hideCardsMatching(root, "[data-a-target='preview-card'], [data-a-target='side-nav-card'], article", DISCOVERY_COPY_PATTERN);
-      hideLabeledItems(root, [
-        "[data-a-target='recommended-channels']",
-        "[data-a-target='followed-channels']",
-        "[aria-label*='recommended' i]"
-      ], DISCOVERY_COPY_PATTERN, findSection);
-    }
-    if (options.hideClips) {
-      for (const element of queryWithin(root, "[data-a-target='clips-carousel'], [aria-label*='clips' i], a[href*='/clip/' i]")) {
-        addClass(element.closest("section, article, li") || element, "unaddictify-hidden-site-item");
-      }
-    }
-    if (options.hideChat) {
-      for (const element of queryWithin(root, "#live-chat-frame, [data-a-target='chat-room'], [data-a-target='chat-scroller']")) {
-        addClass(element.closest("aside, section, [role='complementary']") || element, "unaddictify-hidden-site-item");
-      }
-    }
-  }
-
-  function hideXDiscovery(root = document) {
-    const options = settings.siteSettings.x || {};
-    if (options.hideExplore) {
-      hideLabeledItems(root, [
-        "a[href='/explore']",
-        "a[href='/i/explore']",
-        "[data-testid='AppTabBar_Explore_Link']",
-        "[aria-label='Explore' i]"
-      ], /^explore$/i);
-    }
-    if (options.hideForYouTab) {
-      hideLabeledItems(root, [
-        "a[href*='/for-you' i]",
-        "[role='tab'][aria-label*='for you' i]"
-      ], /for you/i);
-    }
-    if (options.hideSuggestedPosts) {
-      hideCardsMatching(root, "[data-testid='cellInnerDiv'], article, [role='article']", DISCOVERY_COPY_PATTERN);
-    }
-  }
-
-  function hideFacebookDiscovery(root = document) {
-    const options = settings.siteSettings.facebook || {};
-    if (options.hideReels) {
-      hideLabeledItems(root, [
-        "a[href*='/reels' i]",
-        "[aria-label='Reels' i]",
-        "[role='tab'][aria-label*='reels' i]"
-      ], /reels/i);
-    }
-    if (options.hideWatch) {
-      hideLabeledItems(root, [
-        "a[href*='/watch' i]",
-        "[aria-label='Watch' i]",
-        "[role='tab'][aria-label*='watch' i]"
-      ], /^watch$/i);
-    }
-    if (options.hideStories) {
-      for (const element of queryWithin(root, "[aria-label*='stories' i], [data-pagelet*='story' i]")) {
-        addClass(findSection(element), "unaddictify-hidden-site-item");
-      }
-    }
-    if (options.hideSuggestedPosts) {
-      hideCardsMatching(root, "div[role='article'], article", DISCOVERY_COPY_PATTERN);
-    }
-  }
-
-  function hideGoogleDiscovery(root = document) {
-    const options = settings.siteSettings.google || {};
-    if (options.hideDoodles) {
-      for (const element of queryWithin(root, "#hplogo, img[alt*='doodle' i], [aria-label*='doodle' i]")) addClass(element, "unaddictify-hidden-site-item");
-    }
-    if (options.hideTrendingSearches) {
-      hideCardsMatching(root, "[data-attrid*='trending' i], [aria-label*='trending' i], [role='heading'], h2, h3", /trending searches|popular searches/i);
-    }
-    if (options.hideDiscover) {
-      for (const element of queryWithin(root, "[data-attrid*='discover' i], a[href*='discover.google' i], [aria-label*='discover' i]")) addClass(findSection(element), "unaddictify-hidden-site-item");
-    }
-    if (options.hideNewsPanels) {
-      for (const element of queryWithin(root, "[data-attrid*='news' i], a[href*='news.google' i], [aria-label*='top stories' i]")) addClass(findSection(element), "unaddictify-hidden-site-item");
-    }
-  }
-
-  function hidePinterestDiscovery(root = document) {
-    const options = settings.siteSettings.pinterest || {};
-    if (options.hideRecommendations) {
-      hideLabeledItems(root, [
-        "[aria-label*='recommended' i]",
-        "[data-test-id*='recommend' i]",
-        "[data-test-id*='suggest' i]"
-      ], /recommended|suggested/i, findSection);
-      hideCardsMatching(root, "[data-test-id='pin'], [data-test-id='pinWrapper'], article", DISCOVERY_COPY_PATTERN);
-    }
-    if (options.hideRelatedPins) {
-      for (const element of queryWithin(root, "[data-test-id='relatedPins'], [data-test-id='more-like-this'], [aria-label*='related pins' i]")) addClass(findSection(element), "unaddictify-hidden-site-item");
-    }
-    if (options.hideSaveCounts) {
-      for (const element of queryWithin(root, "[aria-label*='save' i], [data-test-id*='save' i], [class*='saveCount' i]")) {
-        const label = element.getAttribute?.("aria-label") || "";
-        if (/\d/.test(label) && /save/i.test(label)) {
-          rememberAria(element);
-          const masked = label.replace(/\d[\d,.]*\s*(?:[KMB]+)?/gi, "").replace(/\s{2,}/g, " ").trim();
-          element.setAttribute("aria-label", masked);
-          originalAria.get(element).masked = masked;
-        }
-        for (const child of element.querySelectorAll?.("span, div") || []) {
-          if (COUNT_ONLY_PATTERN.test(child.textContent || "")) addClass(child, "unaddictify-site-count");
-        }
-      }
-    }
-  }
-
-  function hideThreadsDiscovery(root = document) {
-    const options = settings.siteSettings.threads || {};
-    if (options.hideForYouTab) {
-      hideLabeledItems(root, ["a[href*='/for-you' i]", "[role='tab'][aria-label*='for you' i]"], /for you/i);
-    }
-    if (options.hideSuggestedPosts) hideCardsMatching(root, "article, [role='article']", DISCOVERY_COPY_PATTERN);
-  }
-
-  function hideSnapchatDiscovery(root = document) {
-    const options = settings.siteSettings.snapchat || {};
-    if (options.hideSpotlight) hideLabeledItems(root, ["a[href*='/spotlight' i]", "[aria-label*='spotlight' i]"], /spotlight/i);
-    if (options.hideDiscover) hideLabeledItems(root, ["a[href*='/discover' i]", "[aria-label*='discover' i]"], /discover/i);
-    if (options.hideStories) hideLabeledItems(root, ["a[href*='/stories' i]", "[aria-label*='stories' i]"], /stories/i);
-  }
-
-  function hideWhatsAppDiscovery(root = document) {
-    const options = settings.siteSettings.whatsapp || {};
-    if (options.hideStatus) hideLabeledItems(root, ["[data-testid='status-v3']", "[aria-label*='status' i]", "[aria-label*='updates' i]"], /status|updates/i);
-    if (options.hideChannels) hideLabeledItems(root, ["[data-testid='channels']", "[aria-label*='channels' i]"], /channels/i);
-  }
-
-  function hideMessengerDiscovery(root = document) {
-    const options = settings.siteSettings.messenger || {};
-    if (options.hideStories) {
-      for (const element of queryWithin(root, "[aria-label*='stories' i], [data-testid*='story' i]")) addClass(findSection(element), "unaddictify-hidden-site-item");
-    }
-    if (options.hideSuggestedContent) hideCardsMatching(root, "[role='article'], article", DISCOVERY_COPY_PATTERN);
-  }
-
-  function hideComments(root = document) {
-    const options = settings.siteSettings[currentSite] || {};
-    if (!options.hideComments) return;
-    const selectors = {
-      instagram: "article [data-testid*='comment' i], article [aria-label*='comment' i]",
-      reddit: "shreddit-comment-tree, [data-testid='comment-tree'], .CommentTree",
-      youtube: "ytd-comments, #comments, ytd-comment-thread-renderer",
-      tiktok: "[data-e2e='comment-list'], [data-e2e='comment-container'], [data-e2e='comment-item']"
-    }[currentSite];
-    if (!selectors) return;
-    for (const element of queryWithin(root, selectors)) addClass(element, "unaddictify-hidden-comments");
-  }
-
-  function hideSiteSpecific(root = document) {
-    hideInstagramReels(root);
-    hideComments(root);
-    if (currentSite === "tiktok") hideTikTokNavigation(root);
-    if (currentSite === "twitch") hideTwitchDiscovery(root);
-    if (currentSite === "x") hideXDiscovery(root);
-    if (currentSite === "facebook") hideFacebookDiscovery(root);
-    if (currentSite === "google") hideGoogleDiscovery(root);
-    if (currentSite === "pinterest") hidePinterestDiscovery(root);
-    if (currentSite === "threads") hideThreadsDiscovery(root);
-    if (currentSite === "snapchat") hideSnapchatDiscovery(root);
-    if (currentSite === "whatsapp") hideWhatsAppDiscovery(root);
-    if (currentSite === "messenger") hideMessengerDiscovery(root);
-  }
-
-  function rootStateNeedsRepair() {
-    const root = document.documentElement;
+  function apply() {
+    if (!settings) return;
+    active = D.isActiveForSite(settings, site);
+    hidingFeed = active && D.shouldPauseFeed(settings, site, route);
     if (!active) {
-      return ROOT_CLASSES.some((className) => root.classList.contains(className)) ||
-        root.style.getPropertyValue("--unaddictify-monochrome");
-    }
-
-    const required = ["unaddictify-active", `unaddictify-site-${currentSite}`];
-    const monochrome = U.asPercent(settings.features.monochrome, 0);
-    if (monochrome > 0) required.push("unaddictify-monochrome");
-    for (const [feature, className] of Object.entries(ROOT_FEATURE_CLASSES)) {
-      if (settings.features[feature]) required.push(className);
-    }
-    const siteOptions = settings.siteSettings[currentSite] || {};
-    for (const [key, className] of Object.entries(SITE_SETTING_CLASS_MAP[currentSite] || {})) {
-      if (siteOptions[key]) required.push(className);
-    }
-    const expectedMonochrome = monochrome > 0 ? `${monochrome}%` : "";
-    return required.some((className) => !root.classList.contains(className)) ||
-      root.style.getPropertyValue("--unaddictify-monochrome") !== expectedMonochrome;
-  }
-
-  function applyRootState() {
-    const root = document.documentElement;
-    root.classList.remove("unaddictify-pending", ...ROOT_CLASSES);
-    root.style.removeProperty("--unaddictify-monochrome");
-    const shouldBeActive = U.isActiveForSite(settings, currentSite);
-    if (!shouldBeActive) {
-      active = false;
-      removeYouTubeGate({ restoreFocus: true });
-      setApprovedYouTubePlayer();
-      cleanupTouched();
-      scheduleBypassRefresh();
-      scheduleFocusLockRefresh();
+      removeNotice();
+      hideChip();
+      pill?.remove();
+      restoreQuiet();
+      syncRootClasses();
+      clearBoot();
+      schedulePassRefresh();
       return;
     }
 
-    active = true;
-    root.classList.add("unaddictify-active", `unaddictify-site-${currentSite}`);
-    const monochrome = U.asPercent(settings.features.monochrome, 0);
-    root.style.setProperty("--unaddictify-monochrome", `${monochrome}%`);
-    if (monochrome > 0) root.classList.add("unaddictify-monochrome");
-    for (const [feature, className] of Object.entries(ROOT_FEATURE_CLASSES)) {
-      if (settings.features[feature]) root.classList.add(className);
-    }
-    const siteOptions = settings.siteSettings[currentSite] || {};
-    for (const [key, className] of Object.entries(SITE_SETTING_CLASS_MAP[currentSite] || {})) {
-      if (siteOptions[key]) root.classList.add(className);
-    }
-    syncYouTubeContext();
-    // CSS handles common media immediately. Defer the broad discovery scan
-    // until idle time so page startup and player initialization stay fluid.
-    scheduleBypassRefresh();
-    scheduleFocusLockRefresh();
+    syncRootClasses();
+    syncSurfaces();
+    if (hidingFeed) pauseEveryVideo();
+    clearBoot();
+    schedulePassRefresh();
     scheduleScan(document);
   }
 
-  function notifyLocationChange() {
-    window.dispatchEvent(new Event("unaddictify-location-change"));
-  }
-
-  function installHistoryListeners() {
-    originalPushState = history.pushState;
-    originalReplaceState = history.replaceState;
-    history.pushState = function (...args) {
-      const result = originalPushState.apply(this, args);
-      notifyLocationChange();
-      return result;
-    };
-    history.replaceState = function (...args) {
-      const result = originalReplaceState.apply(this, args);
-      notifyLocationChange();
-      return result;
-    };
-  }
-
-  function removeHistoryListeners() {
-    if (originalPushState && history.pushState !== originalPushState) history.pushState = originalPushState;
-    if (originalReplaceState && history.replaceState !== originalReplaceState) history.replaceState = originalReplaceState;
-    originalPushState = null;
-    originalReplaceState = null;
-  }
-
-  function syncSiteContext() {
+  function onLocationChange() {
     if (location.href === observedUrl) return;
     observedUrl = location.href;
-    const nextSite = U.getSiteFromUrl(location.href);
-    if (nextSite === currentSite) {
-      cleanupTouched();
-      applyRootState();
+    const nextSite = D.getSite(location.href);
+    const nextRoute = D.getRoute(location.href);
+    // Color is granted for one page at a time, so every move asks again.
+    colorGranted = false;
+    passEnded = false;
+    if (nextSite === site && nextRoute === route) {
+      apply();
       return;
     }
-    currentSite = nextSite;
-    window.clearTimeout(bypassTimer);
-    bypassTimer = null;
-    window.clearTimeout(focusLockTimer);
-    focusLockTimer = null;
-    removeYouTubeGate({ restoreFocus: true });
-    setApprovedYouTubePlayer();
-    cleanupTouched();
-    const root = document.documentElement;
-    root.classList.remove("unaddictify-pending", ...ROOT_CLASSES);
-    root.style.removeProperty("--unaddictify-monochrome");
-    active = false;
-    if (currentSite) root.classList.add("unaddictify-pending");
-    applyRootState();
+    site = nextSite;
+    route = nextRoute;
+    restoreQuiet();
+    removeNotice();
+    apply();
   }
 
-  function scanDocument(roots = [document]) {
-    syncSiteContext();
+  /* ----------------------------------------------------------------- scans -- */
+
+  function runScan(roots) {
     if (!active) return;
-    if (roots.includes(document)) syncYouTubeContext();
-    for (const root of roots) {
-      hideShortsTabs(root);
-      scanMedia(root);
-      hideNotificationCues(root);
-      maskEngagementCounts(root);
-      updateAriaCounts(root);
-      hideSiteSpecific(root);
+    for (const scope of roots) {
+      if (scope !== document && !scope.isConnected) continue;
+      maskCounts(scope);
+      maskCountElements(scope);
+      maskAriaCounts(scope);
+      markBadges(scope);
     }
+    quietTitle();
+    syncSurfaces();
   }
 
-  function cleanupTouched() {
-    for (const element of touched) {
-      if (!element || !element.isConnected || element.nodeType === Node.TEXT_NODE) continue;
-      element.classList.remove(
-        "unaddictify-media",
-        "unaddictify-thumbnail",
-        "unaddictify-media-surface",
-        "unaddictify-profile-media",
-        "unaddictify-upside-down-media",
-        "unaddictify-notification-badge",
-        "unaddictify-notification-host",
-        "unaddictify-site-count",
-        "unaddictify-hidden-tab",
-        "unaddictify-hidden-site-item",
-        "unaddictify-hidden-comments"
-      );
-      const aria = originalAria.get(element);
-      if (aria && element.getAttribute("aria-label") === aria.masked) {
-        if (aria.original === null) element.removeAttribute("aria-label");
-        else element.setAttribute("aria-label", aria.original);
-      }
-    }
-    for (const node of touched) {
-      if (node.nodeType !== Node.TEXT_NODE) continue;
-      const state = originalText.get(node);
-      if (state && node.nodeValue === state.masked) node.nodeValue = state.original;
-    }
-    touched.clear();
-  }
-
-  function requestScanPass() {
-    if (scanTimer !== null || scanIdleHandle !== null) return;
+  function requestScan() {
+    if (scanHandle !== null || scanTimer !== null) return;
     const run = () => {
+      scanHandle = null;
       scanTimer = null;
-      scanIdleHandle = null;
       if (!active) {
         pendingRoots.clear();
-        pendingDocumentScan = false;
+        pendingDocument = false;
         return;
       }
-
-      const roots = pendingDocumentScan
-        ? [document]
-        : [...pendingRoots].slice(0, ROOTS_PER_SCAN);
-      pendingDocumentScan = false;
-      for (const root of roots) pendingRoots.delete(root);
-      scanDocument(roots.length ? roots : [document]);
-      if (pendingRoots.size || pendingDocumentScan) requestScanPass();
+      const roots = pendingDocument ? [document] : Array.from(pendingRoots);
+      pendingDocument = false;
+      pendingRoots.clear();
+      runScan(roots.length ? roots : [document]);
+      if (pendingDocument || pendingRoots.size) requestScan();
     };
-
-    if (typeof window.requestIdleCallback === "function") {
-      scanIdleHandle = window.requestIdleCallback(run, { timeout: 500 });
+    if (typeof globalThis.requestIdleCallback === "function") {
+      scanHandle = globalThis.requestIdleCallback(run, { timeout: 400 });
     } else {
-      scanTimer = window.setTimeout(run, 240);
+      scanTimer = setTimeout(run, 200);
     }
   }
 
-  function scheduleScan(root = document) {
+  function scheduleScan(scope) {
     if (!active) return;
-    if (root === document) {
-      pendingDocumentScan = true;
+    if (scope === document || pendingDocument) {
+      pendingDocument = true;
+      pendingRoots.clear();
+    } else if (pendingRoots.size >= MAX_PENDING_ROOTS) {
+      pendingDocument = true;
       pendingRoots.clear();
     } else {
-      const scope = root.closest?.(CARD_SELECTOR);
-      if (scope) {
-        if (pendingRoots.size < MAX_PENDING_ROOTS) pendingRoots.add(scope);
-      } else {
-        // Feed frameworks sometimes append a batch wrapper instead of a
-        // single card. Queue its cards individually so we never rescan the
-        // entire feed container for one small update.
-        const cards = root.matches?.(CARD_SELECTOR)
-          ? [root]
-          : [...(root.querySelectorAll?.(CARD_SELECTOR) || [])].slice(0, MAX_PENDING_ROOTS);
-        if (cards.length) {
-          for (const card of cards) {
-            if (pendingRoots.size >= MAX_PENDING_ROOTS) break;
-            pendingRoots.add(card);
-          }
-        } else if (pendingRoots.size < MAX_PENDING_ROOTS) {
-          pendingRoots.add(root);
+      pendingRoots.add(scope);
+    }
+    requestScan();
+  }
+
+  function scanTargetFor(node) {
+    if (node.nodeType === Node.TEXT_NODE) return node.parentElement;
+    return node.nodeType === Node.ELEMENT_NODE ? node : null;
+  }
+
+  function onMutations(records) {
+    // A real route change always redraws something, so this is the fastest and
+    // most reliable signal available from an isolated world.
+    if (location.href !== observedUrl) onLocationChange();
+    // A feed container can be drawn long after load. Place the notice as soon as
+    // that happens rather than waiting for the next idle scan.
+    if (hidingFeed && (!notice || !notice.isConnected)) syncNotice();
+    for (const record of records) {
+      if (isOurs(record.target)) continue;
+      if (record.type === "attributes") {
+        if (record.target === root()) {
+          const expected = expectedClasses();
+          if (expected.some((className) => !root().classList.contains(className))) syncRootClasses();
+          continue;
         }
+        // Sites rewrite `class` constantly. Only a change that could reveal a
+        // badge is worth a look; label changes always are.
+        if (record.attributeName === "class" && !record.target.matches?.(BADGE_SELECTOR)) continue;
+        scheduleScan(record.target);
+        continue;
+      }
+      if (record.type === "characterData") {
+        const target = scanTargetFor(record.target);
+        if (target) scheduleScan(target);
+        continue;
+      }
+      for (const node of record.addedNodes) {
+        const target = scanTargetFor(node);
+        if (target && !isOurs(target)) scheduleScan(target);
       }
     }
-    requestScanPass();
   }
 
-  function hasBoundedDiscoveryText(element) {
-    const text = element?.textContent?.trim().replace(/\s+/g, " ") || "";
-    return text.length <= 120 && DISCOVERY_COPY_PATTERN.test(text);
+  /* ------------------------------------------------------------------ init -- */
+
+  /**
+   * Single-page apps change route without a load event. A content script runs in
+   * an isolated world, so patching `history.pushState` would only ever see calls
+   * made by the extension itself — never the site's own. Three signals cover it
+   * instead: the Navigation API, the history events, and the fact that any real
+   * route change also mutates the DOM. The slow interval is a last resort.
+   */
+  function watchNavigation() {
+    globalThis.navigation?.addEventListener?.("navigatesuccess", onLocationChange);
+    globalThis.navigation?.addEventListener?.("currententrychange", onLocationChange);
+    window.addEventListener("popstate", onLocationChange);
+    window.addEventListener("hashchange", onLocationChange);
+    document.addEventListener("yt-navigate-finish", onLocationChange);
+    urlTimer = setInterval(onLocationChange, 1000);
   }
 
-  function findMutationScanRoot(node, includeDescendants = false) {
-    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
-    if (!element) return null;
-    const card = element.closest?.(CARD_SELECTOR);
-    if (card) return card;
-    const relevantAncestor = element.closest?.(MUTATION_NESTED_ANCESTOR_SELECTOR);
-    const relevant = isPotentialMediaTarget(element) ||
-      element.matches?.(MUTATION_CONTENT_SELECTOR) ||
-      relevantAncestor ||
-      (includeDescendants && element.querySelector?.(MUTATION_CONTENT_SELECTOR));
-    const discoveryText = hasBoundedDiscoveryText(element);
-    if (!relevant && !discoveryText) return null;
-    if (discoveryText) {
-      return element.closest?.(DISCOVERY_TARGET_SELECTOR) || relevantAncestor || element;
+  function unwatchNavigation() {
+    globalThis.navigation?.removeEventListener?.("navigatesuccess", onLocationChange);
+    globalThis.navigation?.removeEventListener?.("currententrychange", onLocationChange);
+    window.removeEventListener("popstate", onLocationChange);
+    window.removeEventListener("hashchange", onLocationChange);
+    document.removeEventListener("yt-navigate-finish", onLocationChange);
+    clearInterval(urlTimer);
+    urlTimer = null;
+  }
+
+  function onStorageChanged(changes, area) {
+    if (area !== "local") return;
+    const next = { ...settings };
+    let changed = false;
+    for (const key of Object.keys(D.DEFAULT_SETTINGS)) {
+      if (changes[key]) {
+        next[key] = changes[key].newValue;
+        changed = true;
+      }
     }
-    return relevantAncestor || element;
+    if (!changed) return;
+    settings = D.mergeSettings(next);
+    apply();
   }
 
-  function scheduleMutationScan(node, includeDescendants = false) {
-    const root = findMutationScanRoot(node, includeDescendants);
-    if (root) scheduleScan(root);
-  }
-
-  function shouldRescanMutationAttribute(target, attributeName) {
-    if (isPotentialMediaTarget(target)) return true;
-    if (attributeName === "class" && target.matches?.(CARD_SELECTOR)) return true;
-    if (!RESCAN_ATTRIBUTES.has(attributeName)) return false;
-    return Boolean(target.matches?.(MUTATION_ATTRIBUTE_SCOPE_SELECTOR) || target.closest?.(MUTATION_ATTRIBUTE_SCOPE_SELECTOR));
-  }
-
-  function isPotentialMediaTarget(element) {
-    return Boolean(element?.matches?.(
-      `img, video, canvas, [role='img'], [style*='background-image' i], ${MEDIA_WRAPPER_SELECTOR}, .unaddictify-media, .unaddictify-media-surface, .unaddictify-profile-media`
-    ));
-  }
-
-  function handleMediaLoad(event) {
-    if (!active || !event.target?.matches?.("img, video, canvas")) return;
-    scheduleScan(event.target);
-    if (currentSite === "youtube" && event.target.closest?.("#movie_player")) scheduleYouTubeGateSync();
-  }
-
-  function handleYouTubeNavigateFinish() {
-    syncSiteContext();
-    syncYouTubeContext();
-    scheduleScan(document);
+  function teardown() {
+    observer?.disconnect();
+    if (scanHandle !== null) globalThis.cancelIdleCallback?.(scanHandle);
+    clearTimeout(scanTimer);
+    clearTimeout(passTimer);
+    clearTimeout(chipTimer);
+    clearTimeout(chipHideTimer);
+    clearTimeout(bootTimer);
+    clearTimeout(pillCheckTimer);
+    pillCheckTimer = null;
+    removeNotice();
+    hideChip();
+    pill?.remove();
+    restoreQuiet();
+    unwatchNavigation();
+    document.removeEventListener("play", onPlay, true);
+    document.removeEventListener("pointerdown", noteGesture, true);
+    document.removeEventListener("keydown", noteGesture, true);
+    root().classList.remove("decaf-boot", ...ROOT_CLASSES);
   }
 
   async function init() {
-    // Keep the pending state visually neutral until stored settings arrive.
-    // Applying defaults first creates a visible flash for users who have
-    // disabled the extension or chosen a gentler configuration.
-    const stored = await chrome.storage.local.get({
-      ...U.DEFAULT_SETTINGS,
-      [U.YOUTUBE_FOCUS_APPROVALS_KEY]: U.normalizeYouTubeFocusApprovals()
-    });
-    youtubeFocusApprovals = U.normalizeYouTubeFocusApprovals(stored[U.YOUTUBE_FOCUS_APPROVALS_KEY]);
-    delete stored[U.YOUTUBE_FOCUS_APPROVALS_KEY];
-    settings = U.mergeSettings(stored);
-    clearStaleYouTubeFocusApprovals();
-    syncSiteContext();
-    applyRootState();
-    observer = new MutationObserver((records) => {
-      let shouldSyncYouTubeGate = false;
-      for (const record of records) {
-        if (record.type === "characterData") {
-          scheduleMutationScan(record.target);
-          continue;
-        }
-        if (record.type === "attributes") {
-          const target = record.target;
-          if (target === document.documentElement && (record.attributeName === "class" || record.attributeName === "style")) {
-            if (rootStateNeedsRepair()) applyRootState();
-            continue;
-          }
-          if (shouldRescanMutationAttribute(target, record.attributeName)) {
-            scheduleMutationScan(target);
-          }
-          if (currentSite === "youtube" && target.matches?.("video, #movie_player")) shouldSyncYouTubeGate = true;
-          continue;
-        }
-        for (const node of record.addedNodes) {
-          if (node.nodeType === Node.TEXT_NODE) {
-            scheduleMutationScan(record.target);
-            continue;
-          }
-          if (node.nodeType !== Node.ELEMENT_NODE) continue;
-          scheduleMutationScan(node, true);
-          if (
-            currentSite === "youtube" &&
-            (node.matches?.("video, #movie_player, ytd-watch-metadata, ytd-watch-flexy") ||
-              node.querySelector?.("video, #movie_player, ytd-watch-metadata"))
-          ) {
-            shouldSyncYouTubeGate = true;
-          }
-        }
-      }
-      if (shouldSyncYouTubeGate) scheduleYouTubeGateSync();
-    });
-    observer.observe(document.documentElement, {
-      attributes: true,
-      attributeFilter: [
-        "class", "style", "src", "srcset", "data-src", "data-lazy-src", "poster",
-        "aria-label", "title", "href", "data-testid", "data-test-id", "data-e2e",
-        "data-a-target", "data-pagelet", "data-attrid", "data-list-item-id"
-      ],
-      characterData: true,
+    // A feed route stays blank for the few milliseconds it takes to read
+    // settings, so the feed never gets a chance to paint before it is paused.
+    if (route === "feed") {
+      root().classList.add("decaf-boot");
+      bootTimer = setTimeout(clearBoot, 1500);
+    }
+
+    try {
+      settings = D.mergeSettings(await chrome.storage.local.get(D.DEFAULT_SETTINGS));
+    } catch (_) {
+      // If settings cannot be read, do nothing at all. Leaving a site untouched
+      // is always the safe failure.
+      clearBoot();
+      return;
+    }
+
+    apply();
+
+    observer = new MutationObserver(onMutations);
+    observer.observe(root(), {
+      subtree: true,
       childList: true,
-      subtree: true
+      characterData: true,
+      attributes: true,
+      attributeFilter: ["class", "aria-label", "title", "data-badge", "data-unread-count"]
     });
-    installHistoryListeners();
-    window.addEventListener("popstate", syncSiteContext);
-    window.addEventListener("hashchange", syncSiteContext);
-    window.addEventListener("unaddictify-location-change", syncSiteContext);
-    document.addEventListener("load", handleMediaLoad, true);
-    document.addEventListener("loadeddata", handleMediaLoad, true);
-    document.addEventListener("play", guardYouTubePlayback, true);
-    document.addEventListener("yt-navigate-start", scheduleYouTubeGateSync);
-    document.addEventListener("yt-navigate-finish", handleYouTubeNavigateFinish);
-    chrome.storage.onChanged.addListener((changes, area) => {
-      if (area !== "local") return;
-      if (changes[U.YOUTUBE_FOCUS_APPROVALS_KEY]) {
-        youtubeFocusApprovals = U.normalizeYouTubeFocusApprovals(
-          changes[U.YOUTUBE_FOCUS_APPROVALS_KEY].newValue
-        );
-      }
-      const next = { ...settings };
-      for (const key of Object.keys(U.DEFAULT_SETTINGS)) if (changes[key]) next[key] = changes[key].newValue;
-      settings = U.mergeSettings(next);
-      clearStaleYouTubeFocusApprovals();
-      cleanupTouched();
-      applyRootState();
-    });
+
+    watchNavigation();
+    document.addEventListener("play", onPlay, true);
+    document.addEventListener("pointerdown", noteGesture, true);
+    document.addEventListener("keydown", noteGesture, true);
+    chrome.storage.onChanged.addListener(onStorageChanged);
+    window.addEventListener("pagehide", teardown, { once: true });
   }
 
-  function cleanupBeforeUnload() {
-    observer?.disconnect();
-    window.clearTimeout(scanTimer);
-    window.cancelIdleCallback?.(scanIdleHandle);
-    window.cancelAnimationFrame?.(youtubeGateFrame);
-    window.clearTimeout(bypassTimer);
-    window.clearTimeout(focusLockTimer);
-    pendingRoots.clear();
-    pendingDocumentScan = false;
-    window.removeEventListener("popstate", syncSiteContext);
-    window.removeEventListener("hashchange", syncSiteContext);
-    window.removeEventListener("unaddictify-location-change", syncSiteContext);
-    removeHistoryListeners();
-    document.removeEventListener("load", handleMediaLoad, true);
-    document.removeEventListener("loadeddata", handleMediaLoad, true);
-    document.removeEventListener("play", guardYouTubePlayback, true);
-    document.removeEventListener("yt-navigate-start", scheduleYouTubeGateSync);
-    document.removeEventListener("yt-navigate-finish", handleYouTubeNavigateFinish);
-    removeYouTubeGate({ restoreFocus: false });
-    setApprovedYouTubePlayer();
-    cleanupTouched();
-  }
+  init().catch(() => clearBoot());
 
-  window.addEventListener("pagehide", cleanupBeforeUnload, { once: true });
-  init().catch(() => document.documentElement.classList.remove("unaddictify-pending"));
+  // Exposed for the DOM tests. Content scripts run in an isolated world, so the
+  // host page can never reach this object.
+  globalThis.__decaf = {
+    apply,
+    onLocationChange,
+    runScan: () => runScan([document]),
+    teardown,
+    notice: () => noticeParts,
+    pill: () => pill,
+    chip: () => chip,
+    anchors: () => findFeedAnchors(),
+    state: () => ({ site, route, active, hidingFeed, colorGranted, settings })
+  };
 })();

@@ -1,461 +1,201 @@
 (() => {
-  const U = globalThis.UnaddictifySettings;
-  const $ = (selector) => document.querySelector(selector);
-  const $$ = (selector) => [...document.querySelectorAll(selector)];
-  let savedSettings = null;
-  let draftSettings = null;
-  let dirty = false;
+  "use strict";
+
+  const D = globalThis.Decaf;
+  const $ = (id) => document.getElementById(id);
+
+  const NOTES = {
+    pauseFeeds: ["Feeds are paused.", "Feeds stay visible, just quieter."],
+    hideComments: ["Comment threads are hidden.", "Comment threads are back."],
+    upsideDown: ["Media is turned over.", "Media is the right way up again."],
+    hideBadges: ["Notification counts are hidden.", "Notification counts are muted, not hidden."]
+  };
+
+  let settings = null;
+  let chosenHours = D.DEFAULT_LOCK_HOURS;
+  let confirmingLock = false;
   let toastTimer = null;
-  let lockTimer = null;
-  let countdownTimer = null;
-  let celebrationTimer = null;
-  let expectedStorage = null;
+  let ticker = null;
+  const siteInputs = new Map();
+  const switchInputs = new Map();
 
-  const SITE_CONTROL_GROUPS = [
-    {
-      title: "Social feeds",
-      description: "Reduce the most common feed, recommendation, and comment cues.",
-      sites: ["instagram", "reddit", "x", "facebook", "threads"]
-    },
-    {
-      title: "Video & live",
-      description: "Reduce short-form discovery and live-stream pull while keeping intentional viewing available.",
-      sites: ["youtube", "tiktok", "twitch"]
-    },
-    {
-      title: "Visual discovery",
-      description: "Reduce recommendation loops and popularity signals in image-first products.",
-      sites: ["pinterest", "snapchat"]
-    },
-    {
-      title: "Work & messaging",
-      description: "These controls are off by default because the sites can also be useful for direct tasks and communication.",
-      sites: ["discord", "google", "linkedin", "whatsapp", "messenger"]
-    }
-  ];
-
-  function showToast(message) {
-    const toast = $("#toast");
-    toast.textContent = message;
-    toast.classList.add("visible");
-    window.clearTimeout(toastTimer);
-    toastTimer = window.setTimeout(() => {
-      toast.classList.remove("visible");
-      toast.textContent = "";
-    }, 3500);
+  function toast(text = "") {
+    $("toast").textContent = text;
+    clearTimeout(toastTimer);
+    if (text) toastTimer = setTimeout(() => { $("toast").textContent = ""; }, 3200);
   }
 
-  function settingsKey(value) {
-    return JSON.stringify(U.mergeSettings(value));
+  async function read() {
+    return D.mergeSettings(await chrome.storage.local.get(D.DEFAULT_SETTINGS));
   }
 
-  function setNested(target, path, value) {
-    const [site, key] = path.split(".");
-    return {
-      ...target,
-      siteSettings: {
-        ...target.siteSettings,
-        [site]: { ...target.siteSettings[site], [key]: value }
-      }
-    };
-  }
-
-  function formatCountdown(timestamp) {
-    const minutes = Math.max(1, Math.ceil((timestamp - Date.now()) / 60_000));
-    if (minutes < 60) return `${minutes}m remaining`;
-    const hours = Math.floor(minutes / 60);
-    const remainder = minutes % 60;
-    if (hours < 24) return remainder ? `${hours}h ${remainder}m remaining` : `${hours}h remaining`;
-    const days = Math.floor(hours / 24);
-    const remainingHours = hours % 24;
-    return remainingHours ? `${days}d ${remainingHours}h remaining` : `${days}d remaining`;
-  }
-
-  function formatEndTime(timestamp) {
-    const date = new Date(timestamp);
-    const now = new Date();
-    const tomorrow = new Date(now);
-    tomorrow.setDate(now.getDate() + 1);
-    const dateLabel = date.toDateString() === now.toDateString()
-      ? "today"
-      : date.toDateString() === tomorrow.toDateString()
-        ? "tomorrow"
-        : date.toLocaleDateString([], { month: "short", day: "numeric" });
-    const timeLabel = date.toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
-    return `Ends ${dateLabel} at ${timeLabel}`;
-  }
-
-  function celebrateLock() {
-    const status = $("#focus-lock-header");
-    status.classList.remove("just-locked");
-    void status.offsetWidth;
-    status.classList.add("just-locked");
-    window.clearTimeout(celebrationTimer);
-    celebrationTimer = window.setTimeout(() => status.classList.remove("just-locked"), 900);
-  }
-
-  function groupSiteSpecificControls() {
-    const container = $$(".site-details .site-panels").find((element) => element.querySelector("[data-site-panel]"));
-    if (!container || container.dataset.grouped === "true") return;
-    const panels = new Map([...container.querySelectorAll("[data-site-panel]")].map((panel) => [panel.dataset.sitePanel, panel]));
-    container.replaceChildren();
-    for (const group of SITE_CONTROL_GROUPS) {
-      const section = document.createElement("section");
-      section.className = "site-control-group";
-      const heading = document.createElement("h3");
-      heading.textContent = group.title;
-      const description = document.createElement("p");
-      description.className = "site-control-description";
-      description.textContent = group.description;
-      const grid = document.createElement("div");
-      grid.className = "site-control-grid";
-      for (const site of group.sites) {
-        const panel = panels.get(site);
-        if (panel) {
-          const summary = panel.querySelector(":scope > summary");
-          const mark = summary?.querySelector(".summary-mark");
-          if (summary && mark && !summary.querySelector(".site-panel-state")) {
-            const state = document.createElement("span");
-            state.className = "site-panel-state";
-            state.dataset.sitePanelState = site;
-            summary.insertBefore(state, mark);
-          }
-          grid.append(panel);
-        }
-      }
-      section.append(heading, description, grid);
-      container.append(section);
-    }
-    container.dataset.grouped = "true";
-  }
-
-  function updateDraft(next) {
-    if (!savedSettings) return false;
-    const merged = U.mergeSettings(next);
-    if (U.isLocked(savedSettings) && U.isWeakeningChange(savedSettings, merged)) {
+  async function save(next, note = "") {
+    const latest = await read();
+    const requested = { ...latest, ...next };
+    const candidate = D.mergeSettings(requested);
+    if (D.isLocked(latest) && D.isWeakening(latest, requested)) {
+      settings = latest;
       render();
+      toast("Lock is on until it ends.");
       return false;
     }
-    draftSettings = merged;
-    dirty = settingsKey(draftSettings) !== settingsKey(savedSettings);
+    const patch = D.createStoragePatch(latest, candidate);
+    if (Object.keys(patch).length) {
+      if (Object.hasOwn(patch, "lockUntil") && patch.lockUntil) patch[D.LOCK_BASELINE_KEY] = candidate;
+      await chrome.storage.local.set(patch);
+    }
+    settings = candidate;
     render();
+    toast(note);
     return true;
   }
 
-  function setLockedAppearance(input, locked, protectedValue) {
-    const label = input.closest?.("label");
-    const isProtected = locked && Boolean(protectedValue);
-    input.disabled = isProtected;
-    label?.classList.toggle("locked-control", isProtected);
-    if (isProtected) {
-      input.title = "Protected by Focus lock until it expires.";
-      input.setAttribute("aria-describedby", "lock-description focus-lock-header");
-      if (label) label.title = input.title;
-    } else {
-      input.removeAttribute?.("title");
-      input.removeAttribute?.("aria-describedby");
-      if (label) label.removeAttribute?.("title");
+  function bindSwitches() {
+    for (const input of document.querySelectorAll("input[data-setting]")) {
+      const key = input.dataset.setting;
+      switchInputs.set(key, input);
+      input.addEventListener("change", () => {
+        const [on, off] = NOTES[key] || ["Saved.", "Saved."];
+        save({ [key]: input.checked }, input.checked ? on : off)
+          .catch(() => toast("That change could not be saved."));
+      });
     }
   }
 
-  function applyLockedAppearance(locked) {
-    setLockedAppearance($("#global-enabled"), locked, savedSettings.enabled);
-    for (const input of $$('[data-site]')) setLockedAppearance(input, locked, savedSettings.sites[input.dataset.site]);
-    for (const input of $$('[data-feature]')) {
-      if (input.type === "range") continue;
-      setLockedAppearance(input, locked, savedSettings.features[input.dataset.feature]);
-    }
-    for (const input of $$('[data-site-setting]')) {
-      const [site, key] = input.dataset.siteSetting.split(".");
-      const value = Boolean(savedSettings.siteSettings?.[site]?.[key]);
-      setLockedAppearance(input, locked, value);
-    }
+  function buildSites() {
+    const container = $("sites");
+    for (const key of D.SITE_KEYS) {
+      const definition = D.SITES[key];
+      const row = document.createElement("label");
+      row.className = "site";
+      row.dataset.site = key;
 
-    const monochrome = Number(savedSettings.features.monochrome) || 0;
-    const range = $("#monochrome");
-    const rangeRow = range.closest?.(".range-row");
-    const defaultMin = range.dataset.defaultMin || range.min || "0";
-    range.dataset.defaultMin = defaultMin;
-    range.min = locked ? String(monochrome) : defaultMin;
-    const monochromeFullyProtected = locked && monochrome >= 100;
-    range.disabled = monochromeFullyProtected;
-    rangeRow?.classList.toggle("locked-control", monochromeFullyProtected);
-    rangeRow?.classList.toggle("locked-floor", locked && monochrome > 0);
-    range.title = locked && monochrome > 0
-      ? "Monochrome cannot be lowered while Focus lock is active."
-      : "";
+      const copy = document.createElement("span");
+      copy.className = "site-copy";
+      const name = document.createElement("strong");
+      name.textContent = definition.label;
+      const summary = document.createElement("small");
+      summary.textContent = `Pauses ${definition.feedSummary}`;
+      copy.append(name, summary);
 
-    const cooldown = $("#bypass-cooldown");
-    for (const option of cooldown.options || []) {
-      option.disabled = locked && Number(option.value) < Number(savedSettings.bypassCooldownHours);
+      const input = document.createElement("input");
+      input.type = "checkbox";
+      input.dataset.site = key;
+      input.setAttribute("aria-label", `Use Decaf on ${definition.label}`);
+      input.addEventListener("change", () => {
+        save(
+          { sites: { ...settings.sites, [key]: input.checked } },
+          input.checked ? `Decaf is on for ${definition.label}.` : `Decaf is off for ${definition.label}.`
+        ).catch(() => toast("That change could not be saved."));
+      });
+
+      const track = document.createElement("span");
+      track.className = "switch-track";
+      track.setAttribute("aria-hidden", "true");
+
+      row.append(copy, input, track);
+      container.append(row);
+      siteInputs.set(key, input);
     }
-    cooldown.classList.toggle("locked-floor", locked);
-    cooldown.title = locked ? "Shorter break cooldowns are protected until the lock expires." : "";
+  }
+
+  function buildLockChoices() {
+    const container = $("lock-choices");
+    for (const option of D.LOCK_DURATIONS) {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.role = "radio";
+      button.dataset.hours = String(option.hours);
+      button.textContent = option.label;
+      button.addEventListener("click", () => {
+        chosenHours = option.hours;
+        confirmingLock = false;
+        render();
+      });
+      container.append(button);
+    }
   }
 
   function render() {
-    if (!draftSettings || !savedSettings) return;
+    if (!settings) return;
+    const locked = D.isLocked(settings);
 
-    $("#global-enabled").checked = draftSettings.enabled;
-    $("#global-enabled-state").textContent = draftSettings.enabled ? "On" : "Off";
-    $("#global-enabled-state").classList.toggle("off", !draftSettings.enabled);
-    const enabledSiteCount = Object.values(draftSettings.sites).filter(Boolean).length;
-    const totalSiteCount = Object.keys(draftSettings.sites).length;
-    $("#site-coverage-summary").textContent = `${enabledSiteCount} of ${totalSiteCount} sites selected`;
-    for (const input of $$('[data-site]')) input.checked = Boolean(draftSettings.sites[input.dataset.site]);
-    for (const input of $$('[data-feature]')) {
-      const value = draftSettings.features[input.dataset.feature];
-      if (input.type === "range") {
-        input.value = String(value);
-        $("#monochrome-value").textContent = `${value}%`;
-      } else {
-        input.checked = Boolean(value);
-      }
-    }
-    for (const input of $$('[data-site-setting]')) {
-      const [site, key] = input.dataset.siteSetting.split(".");
-      input.checked = Boolean(draftSettings.siteSettings?.[site]?.[key]);
-    }
-    for (const panel of $$('[data-site-panel]')) {
-      const site = panel.dataset.sitePanel;
-      const active = Boolean(draftSettings.sites[site]);
-      const state = panel.querySelector(".site-panel-state");
-      if (state) {
-        state.textContent = active ? "On" : "Off";
-        state.classList.toggle("off", !active);
-      }
-      panel.classList.toggle("site-panel-off", !active);
+    const master = $("master");
+    master.checked = settings.enabled;
+    master.disabled = locked;
+    master.setAttribute("aria-label", settings.enabled ? "Turn Decaf off" : "Turn Decaf on");
+    $("master-state").textContent = locked ? "Locked" : settings.enabled ? "On" : "Off";
+
+    for (const [key, input] of switchInputs) {
+      input.checked = Boolean(settings[key]);
+      // A lock can be added to, never taken from.
+      input.disabled = locked && Boolean(settings[key]);
     }
 
-    const locked = U.isLocked(savedSettings);
-    const modeEnabled = Boolean(draftSettings.enabled);
-    const modeLocked = locked && Boolean(savedSettings.enabled);
-    const modeStatus = $("#focus-lock-header");
-    const modeIcon = $("#focus-lock-header-icon");
-    const modeTitle = $("#focus-lock-header-title");
-    document.body.classList.toggle("mode-active", modeEnabled && !modeLocked);
-    document.body.classList.toggle("mode-off", !modeEnabled && !modeLocked);
-    document.body.classList.toggle("mode-locked", modeLocked);
-    modeStatus.classList.toggle("active", modeEnabled && !modeLocked);
-    modeStatus.classList.toggle("off", !modeEnabled && !modeLocked);
-    modeStatus.classList.toggle("locked", modeLocked);
-    modeStatus.classList.toggle("pending", dirty && !modeLocked);
-    if (modeLocked) {
-      modeIcon.textContent = "🔒";
-      modeTitle.textContent = "Focus Lock active";
-      $("#focus-lock-header-countdown").textContent = formatCountdown(savedSettings.lockUntil);
-      $("#focus-lock-header-copy").textContent = `${formatEndTime(savedSettings.lockUntil)} · Cannot be disabled.`;
-    } else if (modeEnabled) {
-      modeIcon.textContent = "✓";
-      modeTitle.textContent = dirty ? "blokamine ready to save" : "blokamine active";
-      $("#focus-lock-header-countdown").textContent = "";
-      $("#focus-lock-header-copy").textContent = dirty
-        ? "Save changes to apply this mode."
-        : "Focus Lock can protect these settings.";
-    } else {
-      modeIcon.textContent = "○";
-      modeTitle.textContent = "blokamine off";
-      $("#focus-lock-header-countdown").textContent = "";
-      $("#focus-lock-header-copy").textContent = dirty
-        ? "Save changes to turn it off."
-        : "Turn it on to start reducing reward cues.";
+    for (const [key, input] of siteInputs) {
+      input.checked = settings.sites[key];
+      input.disabled = locked && settings.sites[key];
     }
-    if (!$("#lock-duration").value) $("#lock-duration").value = String(U.DEFAULT_LOCK_DURATION_HOURS);
-    const pendingDuration = Number($("#lock-duration").value) || 0;
-    $("#lock-badge").textContent = locked ? "locked" : "unlocked";
-    $("#lock-badge").classList.toggle("locked", locked);
-    $("#lock-description").textContent = locked
-      ? `${U.formatUntil(savedSettings.lockUntil)} Focus Lock is active. blokamine cannot be disabled or weakened until it expires. You can still add friction.`
-      : "Keep your current settings in place until a chosen time. During a lock, YouTube can ask whether to play normally, use your configured friction, or stay paused. The ten-minute break follows the cooldown below.";
-    $("#bypass-cooldown").value = String(draftSettings.bypassCooldownHours);
-    // Lock duration only applies when activating a new lock, so avoid making
-    // an already-active lock look editable.
-    $("#lock-duration").disabled = locked;
-    $("#lock-duration").title = locked ? "Focus Lock is already active." : "";
-    $("#bypass-cooldown").disabled = false;
-    $("#lock-button").textContent = locked ? "Focus lock active" : "Activate focus lock";
-    $("#lock-button").disabled = locked || pendingDuration === 0;
-    $("#lock-button").title = locked ? "This Focus lock is already active." : "";
-    applyLockedAppearance(locked);
-    const globalLocked = modeLocked;
-    $("#global-enabled-state").textContent = globalLocked ? "Locked" : draftSettings.enabled ? "On" : "Off";
-    $("#global-enabled-state").classList.toggle("locked", globalLocked);
-    $("#global-enabled-state").classList.toggle("off", !globalLocked && !draftSettings.enabled);
 
-    $("#save-state").textContent = dirty ? "Unsaved changes" : "All changes saved";
-    // Keep one stable action label; the status text communicates whether it is needed.
-    $("#save-button").textContent = "Save changes";
-    $("#save-button").disabled = !dirty;
-    $("#save-button").classList.toggle("dirty", dirty);
-    document.title = dirty ? "Unsaved changes · blokamine" : "blokamine settings";
-
-    let warning = "";
-    if (locked) {
-      warning = "Focus Lock is active. Blokamine cannot be disabled or weakened until it expires; you can still add friction.";
-    } else if (pendingDuration) {
-      warning = "When activated, settings you save cannot be weakened until the lock expires.";
-    } else if (dirty) {
-      warning = "You have unsaved changes. Save before leaving this page.";
+    for (const button of $("lock-choices").children) {
+      button.setAttribute("aria-checked", String(Number(button.dataset.hours) === chosenHours));
     }
-    $("#save-warning").textContent = warning;
-
-    window.clearTimeout(lockTimer);
-    lockTimer = locked
-      ? window.setTimeout(() => readSettings().catch(() => showToast("Settings could not be refreshed.")), Math.min(2147483647, Math.max(50, savedSettings.lockUntil - Date.now() + 50)))
-      : null;
+    $("lock-choices").hidden = locked;
+    $("lock-button").hidden = locked;
+    $("lock-cancel").hidden = !confirmingLock;
+    $("lock-badge").textContent = locked ? `${D.formatDuration(settings.lockUntil - Date.now())} left` : "Off";
+    $("lock-badge").classList.toggle("on", locked);
+    $("lock-button").textContent = confirmingLock ? "Confirm lock" : "Lock";
+    $("lock-detail").textContent = locked
+      ? `Ends ${D.formatEndTime(settings.lockUntil)}. Nothing above can be switched off until then.`
+      : confirmingLock
+        ? `Lock Decaf for ${D.LOCK_DURATIONS.find((option) => option.hours === chosenHours)?.label}? This cannot be undone.`
+        : "Holds these switches in place. You can add, not remove.";
   }
 
-  async function readSettings() {
-    const next = U.mergeSettings(await chrome.storage.local.get(U.DEFAULT_SETTINGS));
-    const nextKey = settingsKey(next);
-    const expected = expectedStorage;
-    expectedStorage = null;
-    if (expected && expected === nextKey) {
-      savedSettings = next;
-      draftSettings = U.mergeSettings(next);
-      dirty = false;
-      render();
-      return;
-    }
-    if (dirty && savedSettings && nextKey !== settingsKey(savedSettings)) {
-      dirty = false;
-      showToast("Settings changed elsewhere; your draft was reset.");
-      savedSettings = next;
-      draftSettings = U.mergeSettings(next);
-      render();
-      return;
-    }
-    savedSettings = next;
-    if (!dirty) draftSettings = U.mergeSettings(next);
+  async function refresh() {
+    settings = await read();
     render();
   }
 
-  async function saveDraft({ activateLock = false } = {}) {
-    if (!draftSettings || !savedSettings) return false;
-    const current = U.mergeSettings(await chrome.storage.local.get(U.DEFAULT_SETTINGS));
-    if (settingsKey(current) !== settingsKey(savedSettings)) {
-      expectedStorage = null;
-      savedSettings = current;
-      draftSettings = U.mergeSettings(current);
-      dirty = false;
+  async function onLock() {
+    if (!confirmingLock) {
+      confirmingLock = true;
       render();
-      showToast("Settings changed elsewhere; your draft was reset.");
-      return false;
+      return;
     }
-
-    const locked = U.isLocked(current);
-    const next = U.mergeSettings(draftSettings);
-    if (locked && U.isWeakeningChange(current, next)) {
-      render();
-      return false;
-    }
-
-    if (activateLock) {
-      if (locked) {
-        showToast("Focus lock is already active.");
-        return false;
-      }
-      const hours = Number($("#lock-duration").value);
-      if (!hours) {
-        showToast("Choose a lock duration first.");
-        return false;
-      }
-      const youtubeApprovalEnabled = next.sites.youtube && next.siteSettings.youtube.requireVideoApproval;
-      next.enabled = true;
-      const confirmed = window.confirm(
-        `Activate Focus Lock? Protected settings cannot be weakened until it expires.${
-          youtubeApprovalEnabled ? " On YouTube, each video will ask whether to play normally, use your configured friction, or stay paused." : ""
-        }`
-      );
-      if (!confirmed) return false;
-      next.lockUntil = Date.now() + hours * 60 * 60 * 1000;
-    } else {
-      // The normal Save button never changes an already-active lock.
-      next.lockUntil = current.lockUntil;
-    }
-
-    const patch = U.createSettingsPatch(current, next);
-    const normalized = U.applySettingsPatch(current, patch);
-    const validationCandidate = {
-      ...normalized,
-      enabled: Object.hasOwn(patch, "enabled") ? Boolean(patch.enabled) : normalized.enabled
-    };
-    if (locked && U.isWeakeningChange(current, validationCandidate)) {
-      render();
-      return false;
-    }
-
-    const storagePatch = U.createStoragePatch(current, normalized);
-    if (activateLock) storagePatch[U.LOCK_BASELINE_KEY] = normalized;
-    expectedStorage = settingsKey(normalized);
-    try {
-      await chrome.storage.local.set(storagePatch);
-    } catch (_) {
-      expectedStorage = null;
-      showToast("Changes could not be saved.");
-      return false;
-    }
-    expectedStorage = null;
-    savedSettings = normalized;
-    draftSettings = U.mergeSettings(normalized);
-    dirty = false;
-    render();
-    if (activateLock) celebrateLock();
-    showToast(activateLock ? `Focus Lock enabled. You're protected until ${formatEndTime(normalized.lockUntil)}.` : "Changes saved.");
-    return true;
+    confirmingLock = false;
+    const lockUntil = Date.now() + chosenHours * 3600000;
+    await save({ enabled: true, lockUntil }, `Locked until ${D.formatEndTime(lockUntil)}.`);
   }
 
-  function setFeature(input) {
-    const value = input.type === "range" ? Number(input.value) : input.checked;
-    updateDraft({ ...draftSettings, features: { ...draftSettings.features, [input.dataset.feature]: value } });
-  }
+  function init() {
+    $("version").textContent = `Version ${chrome.runtime.getManifest?.().version || ""}`.trim();
+    bindSwitches();
+    buildSites();
+    buildLockChoices();
 
-  function setSite(input) {
-    updateDraft({ ...draftSettings, sites: { ...draftSettings.sites, [input.dataset.site]: input.checked } });
-  }
-
-  function setSiteSetting(input) {
-    updateDraft(setNested(draftSettings, input.dataset.siteSetting, input.checked));
-  }
-
-  function setBypassCooldown(input) {
-    updateDraft({ ...draftSettings, bypassCooldownHours: Number(input.value) });
-  }
-
-  async function init() {
-    groupSiteSpecificControls();
-    await readSettings();
-    $("#global-enabled").addEventListener("change", (event) => {
-      if (!event.target.checked && !window.confirm("Turn off blokamine on every supported site?")) {
-        render();
-        return;
-      }
-      updateDraft({ ...draftSettings, enabled: event.target.checked });
+    $("master").addEventListener("change", (event) => {
+      const enabled = event.target.checked;
+      save({ enabled }, enabled ? "Decaf is on." : "Decaf is off everywhere.")
+        .catch(() => toast("That change could not be saved."));
     });
-    for (const input of $$('[data-feature]')) {
-      if (input.type === "range") {
-        input.addEventListener("input", () => {
-          $("#monochrome-value").textContent = `${input.value}%`;
-        });
-      }
-      input.addEventListener("change", () => setFeature(input));
-    }
-    for (const input of $$('[data-site]')) input.addEventListener("change", () => setSite(input));
-    for (const input of $$('[data-site-setting]')) input.addEventListener("change", () => setSiteSetting(input));
-    $("#lock-duration").addEventListener("change", () => render());
-    $("#bypass-cooldown").addEventListener("change", (event) => setBypassCooldown(event.target));
-    $("#lock-button").addEventListener("click", () => saveDraft({ activateLock: true }).catch(() => showToast("Changes could not be saved.")));
-    $("#save-button").addEventListener("click", () => saveDraft().catch(() => showToast("Changes could not be saved.")));
-    window.addEventListener("beforeunload", (event) => {
-      if (!dirty) return;
-      event.preventDefault();
-      event.returnValue = "";
+    $("lock-button").addEventListener("click", () => {
+      onLock().catch(() => toast("That change could not be saved."));
     });
-    chrome.storage.onChanged.addListener(readSettings);
-    countdownTimer = window.setInterval(() => {
-      if (savedSettings && U.isLocked(savedSettings)) render();
-    }, 1000);
+    $("lock-cancel").addEventListener("click", () => {
+      confirmingLock = false;
+      render();
+    });
+    chrome.storage.onChanged.addListener(() => {
+      refresh().catch(() => {});
+    });
+    ticker = setInterval(() => {
+      if (settings && D.isLocked(settings)) render();
+    }, 30000);
+    window.addEventListener("pagehide", () => clearInterval(ticker), { once: true });
+    refresh().catch(() => toast("Settings could not be loaded."));
   }
 
-  init().catch(() => showToast("Settings could not be loaded."));
+  init();
 })();
