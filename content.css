@@ -7,6 +7,7 @@
  *   .decaf-site-KEY      which supported site this is
  *   .decaf-feed          this route is an endless, algorithmic surface
  *   .decaf-media         this route is one thing the person opened on purpose
+ *   .decaf-game          this route is a puzzle, and it keeps its colour
  *   .decaf-hide-feed     the feed on this route is paused right now
  *   .decaf-calm          "Pause feeds" is on, so recommendation rails go too
  *   .decaf-hide-comments comment and reply threads are hidden
@@ -50,14 +51,38 @@ html.decaf-on [style*="background-image"] {
 
 /* Drawings count as media too: LinkedIn's reaction faces and a verified tick are
    inline SVG with the colour written into them. Only inside the content, so the
-   site's own icons - already one colour - are left unfiltered. */
-html.decaf-on :is(article, main, [role="main"], [role="feed"], [role="article"], #contents, #primary) svg {
+   site's own icons - already one colour - are left unfiltered.
+
+   The content landmarks are matched with :where(), not :is(), so that #contents
+   and #primary in the list do not lend the whole rule an id's specificity. That
+   would put it out of reach of the exemptions below, which have only classes to
+   work with. */
+html.decaf-on :where(article, main, [role="main"], [role="feed"], [role="article"], #contents, #primary) svg {
   filter: grayscale(1) !important;
 }
 
 /* Opt-in extra friction: turn the content over, but never the site's own chrome. */
-html.decaf-upside-down :is(article, main, [role="main"], [role="feed"], #contents, #primary) :is(img, video) {
+html.decaf-upside-down :where(article, main, [role="main"], [role="feed"], #contents, #primary) :is(img, video) {
   transform: rotate(180deg) !important;
+}
+
+/*
+ * A game keeps its board, and only its board.
+ *
+ * The rest of a games page is drained like any other page — the nav, the
+ * notification badges, the confetti, the streak artwork, the photos of everyone
+ * on the leaderboard. The board is the exception, because its colour is the
+ * puzzle: Queens is played by reading the coloured regions, and its crowns are
+ * gold. A grey board is a broken game, not a calmer one.
+ *
+ * The cells themselves were never at risk — they are divs painted from
+ * LinkedIn's own stylesheet, and nothing above drains those. The drawings inside
+ * them are, so the whole subtree is spared. content.js marks the board.
+ */
+html.decaf-game .decaf-game-board,
+html.decaf-game .decaf-game-board :is(img, video, canvas, svg) {
+  filter: none !important;
+  transform: none !important;
 }
 
 /* Full color, granted for this page only, for the one thing being watched. */

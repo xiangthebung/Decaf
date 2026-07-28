@@ -157,6 +157,62 @@ test("comment hiding covers the sites the settings page promises", () => {
   }
 });
 
+/**
+ * A game's board keeps its colour — Queens is played by reading the coloured
+ * regions, and its crowns are gold — while the page around it is drained like any
+ * other. Two things have to hold for that: the board is spared, and the sparing
+ * rule can actually outrank the rules that drain. The second is easy to lose,
+ * because `:is(#contents, ...)` in a landmark list lends a rule an id's
+ * specificity, which a class-only exemption can never beat.
+ */
+test("a game's board keeps its colour, and nothing else on the page does", () => {
+  assert.ok(D.SITES.linkedin.isGame, "LinkedIn has to recognize its games");
+  assert.equal(D.getRoute("https://www.linkedin.com/games/queens/results/"), "game");
+  assert.match(read("content.js"), /decaf-game-board/, "content.js has to mark the board");
+
+  const rules = cssRules(contentCss);
+  const spares = rules.filter((rule) => rule.selectors.some((s) => s.includes(".decaf-game-board")));
+  assert.equal(spares.length, 1, "exactly one rule spares the board");
+  assert.match(spares[0].body, /filter:\s*none/, "the board keeps its colour");
+  assert.match(spares[0].body, /transform:\s*none/, "the board is never turned over");
+  for (const selector of spares[0].selectors) {
+    assert.match(selector, /^html\.decaf-game /, `"${selector}" must only apply on a game route`);
+  }
+
+  // Nothing that drains or rotates may carry id-level specificity, or the rule
+  // above cannot reach past it. An id inside :where() carries none, so it is fine.
+  for (const rule of rules) {
+    if (!/filter:\s*grayscale|transform:\s*rotate/.test(rule.body)) continue;
+    for (const selector of rule.selectors) {
+      assert.doesNotMatch(withoutWhere(selector), /#/,
+        `"${selector}" outranks the board exemption; put its id list in :where()`);
+    }
+  }
+});
+
+/** A selector with every `:where(...)` group removed — what still counts for specificity. */
+function withoutWhere(selector) {
+  let out = "";
+  let index = 0;
+  while (index < selector.length) {
+    if (!selector.startsWith(":where(", index)) {
+      out += selector[index];
+      index += 1;
+      continue;
+    }
+    let depth = 0;
+    index += ":where".length;
+    for (; index < selector.length; index += 1) {
+      if (selector[index] === "(") depth += 1;
+      if (selector[index] === ")" && --depth === 0) {
+        index += 1;
+        break;
+      }
+    }
+  }
+  return out;
+}
+
 test("badges are muted by default and only hidden on request", () => {
   assert.match(contentCss, /html\.decaf-on \.decaf-badge \{[^}]*grayscale/);
   assert.match(contentCss, /html\.decaf-hide-badges \.decaf-badge \{\s*display: none/);

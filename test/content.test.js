@@ -516,6 +516,77 @@ test("a badge kept in a shadow root is still found", async () => {
   }
 });
 
+test("a badge a site only paints is found, and the mark lands on the paint", async () => {
+  // Instagram's sidebar as it really ships: no nav landmark anywhere, hashed
+  // class names that say nothing, and the count in a span inside the div that
+  // carries the colour. A filter never reaches an ancestor, so marking the
+  // number would drain the number and leave the pill lit.
+  const html = `<!doctype html><html><head><title>ig</title></head><body>
+    <div class="x1cy8zhl x9f619 x78zum5">
+      <a href="/direct/inbox/" role="link"><span class="x1lliihq xsdox4t">
+        <div id="pill" class="html-div xdj266r x14z9mp" style="background-color: rgb(255, 48, 64)"><span id="count">1</span></div>
+      </span></a>
+    </div>
+  </body></html>`;
+  const page = await launchPage({ url: "https://www.instagram.com/someone/", html });
+  try {
+    page.api.runScan();
+    assert.ok(
+      page.document.getElementById("pill").classList.contains("decaf-badge"),
+      "the element carrying the colour is the one marked"
+    );
+    assert.equal(
+      page.document.getElementById("count").classList.contains("decaf-badge"),
+      false,
+      "and not the number inside it, which a filter could not reach the pill from"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+test("a badge is recognized whatever colour a site paints it", async () => {
+  // X paints an unread dot the same blue as its subscribe button. One is a
+  // nudge, the other is something you can press.
+  const html = `<!doctype html><html><head><title>x</title></head><body>
+    <header role="banner"><nav role="navigation">
+      <a href="/notifications" role="link"><div id="dot" style="background-color: rgb(29, 155, 240)"></div></a>
+    </nav></header>
+    <a href="/i/premium_sign_up" role="link" id="cta" style="background-color: rgb(29, 155, 240)"><span>Subscribe</span></a>
+  </body></html>`;
+  const page = await launchPage({ url: "https://x.com/notifications", html });
+  try {
+    page.api.runScan();
+    assert.ok(page.document.getElementById("dot").classList.contains("decaf-badge"), "a blue dot is still a badge");
+    assert.equal(
+      page.document.getElementById("cta").classList.contains("decaf-badge"),
+      false,
+      "a button you can press is not a badge, whatever colour it is"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+test("a reward count in a control is masked, never treated as a badge", async () => {
+  // The painted rule looks outside navigation landmarks, so a like count sitting
+  // in a button must not be swept up: it is masked to a dash, and it stays put
+  // rather than being hidden away with the notification badges.
+  const html = `<!doctype html><html><head><title>ig</title></head><body>
+    <main><article>
+      <div><svg aria-label="Like"></svg><span role="button"><span id="likes">1234</span></span></div>
+    </article></main>
+  </body></html>`;
+  const page = await launchPage({ url: "https://www.instagram.com/natgeo/p/Abc123/", html });
+  try {
+    page.api.runScan();
+    assert.equal(page.document.getElementById("likes").textContent, "—");
+    assert.equal(page.document.getElementById("likes").classList.contains("decaf-badge"), false);
+  } finally {
+    page.close();
+  }
+});
+
 test("a number in an element that exists only to show counts is masked", async () => {
   const html = `<!doctype html><html><head><title>reddit</title></head><body>
     <aside id="rail"><a href="/r/x/comments/1/t/"><faceplate-number id="score">4211</faceplate-number></a></aside>

@@ -29,12 +29,15 @@
   ]);
 
   /**
-   * Three kinds of route:
+   * Four kinds of route:
    *   feed     an endless, algorithmically supplied surface
    *   media    one thing the person opened on purpose
+   *   game     a puzzle: bounded, and it ends on its own
    *   content  everything else — search, messages, profiles, settings
    *
-   * `media` wins over `feed` so a permalink is never mistaken for a feed.
+   * `media` wins over `feed` so a permalink is never mistaken for a feed, and
+   * `game` is settled before `feed` for the same reason. A game is the one
+   * surface Decaf leaves in colour — see the note in content.css.
    *
    * `feedSelectors` are the containers that hold the feed, narrowest first.
    * While a feed is paused content.css empties every one of them — it hides their
@@ -219,6 +222,11 @@
       feedSummary: "Home feed",
       isFeed: ({ path }) => path === "/" || /^\/feed\/?$/.test(path),
       isMedia: ({ path }) => /^\/posts\/[^/]+/.test(path) || /^\/feed\/update\/[^/]+/.test(path),
+      // The games hub, a game's launch page and its results, and the surface the
+      // game itself is served on: /games/, /games/queens/results/,
+      // /games/view/queens/desktop/. LinkedIn frames the last one inside the
+      // second, so both have to count.
+      isGame: ({ path }) => /^\/games(\/|$)/.test(path),
       feedSelectors: [
         "main .scaffold-finite-scroll",
         "main[aria-label='Main Feed']",
@@ -364,7 +372,7 @@
     return null;
   }
 
-  /** "feed" | "media" | "content" for supported sites, "" otherwise. */
+  /** "feed" | "media" | "game" | "content" for supported sites, "" otherwise. */
   function getRoute(url = "") {
     const site = getSite(url);
     if (!site) return "";
@@ -374,6 +382,7 @@
       const context = { path, search: parsed.search || "", hash: parsed.hash || "" };
       const definition = SITES[site];
       if (definition.isMedia?.(context)) return "media";
+      if (definition.isGame?.(context)) return "game";
       return definition.isFeed(context) ? "feed" : "content";
     } catch (_) {
       return "";

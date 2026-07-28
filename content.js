@@ -23,6 +23,7 @@
     "decaf-calm",
     "decaf-feed",
     "decaf-media",
+    "decaf-game",
     "decaf-content",
     "decaf-hide-feed",
     "decaf-hide-comments",
@@ -67,6 +68,23 @@
     "[data-unread-count]"
   ].join(",");
   const BADGE_REGION_SELECTOR = "nav,header,[role='navigation'],[role='tablist'],[role='banner']";
+  const CONTROL_SELECTOR = "a,button,[role='button'],[role='link'],[role='tab'],[role='menuitem']";
+  // Where a badge a site never names may be looked for: on a control, or in a
+  // region a site does mark as navigation.
+  const PAINT_HOST_SELECTOR = `${CONTROL_SELECTOR},${BADGE_REGION_SELECTOR}`;
+  // Reading style for every element on a page the size of Instagram's is enough
+  // to make it stutter, so the search for a painted badge is bounded. Badges sit
+  // in site furniture, which is small and near the top of the document, so a
+  // bound this size has never been reached on a real page.
+  const PAINT_STYLE_BUDGET = 500;
+  const PAINT_HOST_BUDGET = 600;
+  const MAX_BADGE_TEXT = 5;
+  // A game board, where the site happens to name one. Queens is the only game
+  // that does, so the rest are found by shape: see syncGameBoard.
+  const GAME_BOARD_SELECTOR = "#queens-game-board,#queens-grid,#trail-grid";
+  const MIN_BOARD_CELLS = 16;
+  const MIN_CELL_PX = 24;
+  const GAME_BOARD_BUDGET = 600;
   // Elements that exist only to show a count, whatever surrounds them. Every
   // number inside one is a count, however deeply it is wrapped.
   const COUNT_ELEMENT_SELECTOR = "faceplate-number,shreddit-score";
@@ -387,9 +405,10 @@
   }
 
   function markBadge(element) {
-    if (element.classList.contains("decaf-badge")) return;
-    element.classList.add("decaf-badge");
-    touchedElements.add(element);
+    const target = paintedBadge(element);
+    if (target.classList.contains("decaf-badge")) return;
+    target.classList.add("decaf-badge");
+    touchedElements.add(target);
   }
 
   /** Badge-sized: a nudge in the corner of an icon, not a region of the page. */
@@ -408,17 +427,43 @@
     return badgeSized(element);
   }
 
-  /** A background a site chose to be alarming: the red of an unread dot. */
+  /**
+   * A background a site chose to be noticed. Hue is not the signal, saturation
+   * is: Instagram and Twitch paint an unread count red, X and YouTube paint the
+   * same idea blue. Grey, white and black are the page's own furniture, so a
+   * strongly coloured background is what tells a badge apart from a wrapper.
+   */
   function alarmingBackground(value) {
-    const [red, green, blue, alpha = 1] = (value.match(/[\d.]+/g) || []).map(Number);
-    if (!Number.isFinite(red) || !Number.isFinite(blue)) return false;
-    return alpha > 0.3 && red > 150 && green < 110 && blue < 110;
+    const [red, green, blue, alpha = 1] = (String(value).match(/[\d.]+/g) || []).map(Number);
+    if (![red, green, blue].every(Number.isFinite)) return false;
+    if (!(alpha > 0.3)) return false;
+    const brightest = Math.max(red, green, blue);
+    return brightest > 100 && brightest - Math.min(red, green, blue) > 40;
   }
 
   /**
-   * A red dot with no number in it. LinkedIn draws one over the Home icon with
-   * nothing to identify it: hashed class names, no text, no attributes. Its
-   * colour and its size are the only things left to go on.
+   * The element that actually carries a badge's colour. A filter applies to an
+   * element and everything inside it, never to what is around it, so marking the
+   * number inside a coloured pill would drain the number and leave the pill lit.
+   * Instagram wraps its count in exactly that shape, so the mark climbs to the
+   * paint — but never past the control, which must keep working and looking
+   * like itself.
+   */
+  function paintedBadge(element) {
+    let found = element;
+    let current = element;
+    for (let depth = 0; current && depth < 4 && current !== root(); depth += 1) {
+      if (isInteractive(current) || isOurs(current)) break;
+      if (badgeSized(current) && alarmingBackground(getComputedStyle(current).backgroundColor)) found = current;
+      current = current.parentElement;
+    }
+    return found;
+  }
+
+  /**
+   * A coloured dot with no number in it. LinkedIn draws one over the Home icon
+   * with nothing to identify it: hashed class names, no text, no attributes.
+   * Its colour and its size are the only things left to go on.
    */
   function looksLikeAlertDot(element) {
     if (isInteractive(element) || isOurs(element) || element.children.length) return false;
@@ -432,8 +477,57 @@
     if (isInteractive(element) || isOurs(element) || element.children.length) return false;
     const text = element.textContent?.trim() || "";
     // A dash is a count Decaf masked a moment ago, still a badge.
-    if (!text || text.length > 5 || !(BARE_COUNT.test(text) || text === "—")) return false;
+    if (!text || text.length > MAX_BADGE_TEXT || !(BARE_COUNT.test(text) || text === "—")) return false;
     return badgeSized(element);
+  }
+
+  /**
+   * The shape of a badge, before its colour is looked at. Everything here is
+   * cheap, because it decides whether measuring the element's style is worth it.
+   *
+   * One child is allowed, which is the point: a site that wraps the number in a
+   * span — Instagram does — paints the wrapper, not the number, and the wrapper
+   * is the element that has to be marked.
+   */
+  function badgeShaped(element) {
+    if (isInteractive(element) || isOurs(element)) return false;
+    if (element.children.length > 1) return false;
+    const text = element.textContent?.trim() || "";
+    if (text.length > MAX_BADGE_TEXT) return false;
+    // Empty is a dot; anything with words in it is a label, a tooltip or a
+    // button, and none of those is a badge.
+    if (text && !(BARE_COUNT.test(text) || text === "—")) return false;
+    return badgeSized(element) && isRendered(element);
+  }
+
+  /**
+   * A badge a site paints but never names.
+   *
+   * Instagram's sidebar is a stack of plain divs with hashed class names and no
+   * landmark of any kind, so nothing in the markup says "badge" and nothing says
+   * "navigation" either. What is left is what it looks like: a small shape,
+   * painted to be noticed, holding nothing but a short count, sitting on
+   * something clickable. A reward count is plain text on the page's own
+   * background, so it can never be mistaken for one of these.
+   */
+  function markPaintedBadges(scope) {
+    let styleBudget = PAINT_STYLE_BUDGET;
+    let hostBudget = PAINT_HOST_BUDGET;
+    for (const host of queryWithin(scope, PAINT_HOST_SELECTOR)) {
+      if (styleBudget <= 0 || hostBudget-- <= 0) return;
+      if (isOurs(host) || !isRendered(host)) continue;
+      // A badge rides on a piece of site furniture. Something this small inside
+      // a container the size of a post is the site's own artwork, so only a
+      // region a site itself calls navigation is allowed to be large.
+      const rect = host.getBoundingClientRect?.();
+      const oversized = rect && (rect.width > 400 || rect.height > 160);
+      if (oversized && !host.matches?.(BADGE_REGION_SELECTOR)) continue;
+      for (const element of host.querySelectorAll("span,div,em,strong,i,b")) {
+        if (!badgeShaped(element)) continue;
+        if (styleBudget-- <= 0) return;
+        if (alarmingBackground(getComputedStyle(element).backgroundColor)) markBadge(element);
+      }
+    }
   }
 
   /**
@@ -451,10 +545,13 @@
     for (const region of queryWithin(scope, BADGE_REGION_SELECTOR)) {
       for (const element of region.querySelectorAll("span,div,em,strong,i,b")) {
         if (!looksLikeCountBadge(element) && !looksLikeAlertDot(element)) continue;
-        if (!element.closest("a,button,[role='button'],[role='link'],[role='tab']")) continue;
+        if (!element.closest(CONTROL_SELECTOR)) continue;
         markBadge(element);
       }
     }
+    // Sites that name nothing and mark up no landmarks are left. They still
+    // paint, so the colour is what finds the badge.
+    markPaintedBadges(scope);
   }
 
   function quietTitle() {
@@ -473,7 +570,7 @@
 
   function restoreQuiet() {
     for (const element of touchedElements) {
-      element.classList?.remove("decaf-badge", "decaf-feed-container", "decaf-comment-list");
+      element.classList?.remove("decaf-badge", "decaf-feed-container", "decaf-comment-list", "decaf-game-board");
       if (originalAria.has(element)) {
         const value = originalAria.get(element);
         if (value === null) element.removeAttribute("aria-label");
@@ -1057,10 +1154,60 @@
     }
   }
 
+  /**
+   * Mark a game's board so the stylesheet can leave it in colour.
+   *
+   * Everything else on a games page is drained like any other page: the nav, the
+   * notification badges, the confetti, the streak artwork, and the photos of the
+   * people on the leaderboard. The board is the exception, because the colour in
+   * it is the puzzle — Queens is played by reading the coloured regions, and its
+   * crowns are gold — and a grey board is a broken game rather than a calm one.
+   *
+   * LinkedIn names the board on Queens and nowhere else, and every class on the
+   * page is a build hash, so the board is found by its shape instead: the square
+   * grid of equally sized square cells. Only ever looked for on a game route, so
+   * a grid of photos on a feed can never be mistaken for one.
+   */
+  function syncGameBoard() {
+    const wanted = active && route === "game";
+    for (const element of document.querySelectorAll(".decaf-game-board")) {
+      if (!wanted) element.classList.remove("decaf-game-board");
+    }
+    if (!wanted || !hasLayout()) return;
+    const main = document.querySelector("main") || document.body;
+    if (!main || main.querySelector(".decaf-game-board")) return;
+
+    const named = main.querySelector(GAME_BOARD_SELECTOR);
+    if (named) {
+      named.classList.add("decaf-game-board");
+      touchedElements.add(named);
+      return;
+    }
+
+    let looked = 0;
+    let best = null;
+    for (const element of main.querySelectorAll("div,section,table,ul")) {
+      if (looked > GAME_BOARD_BUDGET) break;
+      looked += 1;
+      if (isOurs(element)) continue;
+      const cells = Array.from(element.children).filter(isRendered);
+      if (cells.length < MIN_BOARD_CELLS) continue;
+      const first = cells[0].getBoundingClientRect();
+      // Cells are square, and big enough to be played on rather than decoration.
+      if (first.width < MIN_CELL_PX || Math.abs(first.width - first.height) > 4) continue;
+      if (!cells.every((cell) => Math.abs(cell.getBoundingClientRect().width - first.width) < 2)) continue;
+      if (!best || cells.length > best.cells) best = { element, cells: cells.length };
+    }
+    if (!best) return;
+    best.element.classList.add("decaf-game-board");
+    touchedElements.add(best.element);
+  }
+
   function syncSurfaces() {
     syncNotice();
     syncPill();
     syncCommentPanel();
+    syncGameBoard();
   }
 
   /* ------------------------------------------------------------- lifecycle -- */

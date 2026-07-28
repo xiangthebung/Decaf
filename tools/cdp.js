@@ -123,14 +123,17 @@ async function targets() {
   return http("/json/list");
 }
 
-/** The id of the unpacked extension loaded from `root`, if it can be found. */
+/**
+ * The id of the unpacked extension loaded from `root`, if it can be found.
+ *
+ * The profile is asked first, because it is the only source that ties an id to a
+ * folder. A debug profile usually has several extensions in it, so the first
+ * chrome-extension:// target is just as likely to belong to one of the others.
+ */
 async function extensionId(root) {
-  const list = await targets();
-  const target = list.find((entry) => entry.url?.startsWith("chrome-extension://"));
-  if (target) return new URL(target.url).hostname;
-  // A sleeping service worker is not a target, so fall back to the profile.
   const fs = require("node:fs");
   const path = require("node:path");
+  const wanted = path.resolve(root);
   const dirs = [process.env.DECAF_PROFILE, path.join(require("node:os").homedir(), ".chrome-debug")].filter(Boolean);
   // Unpacked extensions are recorded in "Secure Preferences", not "Preferences".
   const files = dirs.flatMap((dir) => ["Secure Preferences", "Preferences"].map((name) =>
@@ -144,10 +147,18 @@ async function extensionId(root) {
       continue;
     }
     for (const [id, value] of Object.entries(settings)) {
-      if (value?.path && path.resolve(value.path) === path.resolve(root)) return id;
+      if (typeof value?.path !== "string") continue;
+      if (path.resolve(value.path) === wanted) return id;
     }
   }
-  return process.env.DECAF_EXT_ID || null;
+  if (process.env.DECAF_EXT_ID) return process.env.DECAF_EXT_ID;
+  // Nothing in the profile matched: fall back to a running extension, but only
+  // when there is exactly one, so this can never pick the wrong one silently.
+  const list = await targets();
+  const ids = [...new Set(list
+    .filter((entry) => entry.url?.startsWith("chrome-extension://"))
+    .map((entry) => new URL(entry.url).hostname))];
+  return ids.length === 1 ? ids[0] : null;
 }
 
 /**

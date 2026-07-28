@@ -70,6 +70,11 @@ test("routes separate endless feeds from things opened on purpose", () => {
     ["https://www.linkedin.com/feed/update/urn:li:activity:1/", "media"],
     ["https://www.linkedin.com/posts/someone-abc", "media"],
     ["https://www.linkedin.com/messaging/", "content"],
+    ["https://www.linkedin.com/games/", "game"],
+    ["https://www.linkedin.com/games/queens/", "game"],
+    ["https://www.linkedin.com/games/queens/results/", "game"],
+    // The page the launch page frames, which is also reachable on its own.
+    ["https://www.linkedin.com/games/view/queens/desktop/", "game"],
     ["https://news.google.com/topstories", "feed"],
     ["https://news.google.com/articles/xyz", "media"],
     ["https://news.google.com/search?q=a", "content"],

@@ -11,7 +11,6 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
-const http = require("node:http");
 const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
@@ -39,7 +38,14 @@ const FIXTURE = `<!doctype html>
 <body>
   <header id="masthead">
     <input id="site-search" type="search">
-    <nav><a href="/feed/subscriptions">Subs<span id="badge">7</span></a></nav>
+    <nav>
+      <a href="/feed/subscriptions">Subs<span id="badge">7</span></a>
+      <!-- A badge a site paints and never names, with the count wrapped the way
+           Instagram wraps it: the pill carries the colour, not the number. -->
+      <a href="/inbox" id="inbox"><span id="pill"
+         style="display:inline-block;width:22px;height:22px;background:rgb(255,48,64)"><span
+         id="pill-count">1</span></span></a>
+    </nav>
   </header>
   <div id="page-manager">
     <ytd-browse page-subtype="home">
@@ -56,26 +62,29 @@ const FIXTURE = `<!doctype html>
   <div id="movie_player"><video id="player"></video></div>
 </body></html>`;
 
-function serve() {
-  return new Promise((resolve, reject) => {
-    const server = http.createServer((request, response) => {
-      response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-      response.end(FIXTURE);
-    });
-    server.once("error", reject);
-    server.listen(0, "127.0.0.1", () => resolve({ server, port: server.address().port }));
-  });
+/**
+ * The fixture is answered from inside the browser rather than from a local
+ * server. Decaf is keyed to real hostnames, and every hostname it supports is on
+ * the HSTS preload list, so a plain-HTTP stand-in is force-upgraded to HTTPS and
+ * never loads. Fulfilling the request instead keeps the real origin without
+ * needing a certificate.
+ */
+async function serveFixture(context, origin) {
+  await context.route(`${origin}/**`, (route) => route.fulfill({
+    status: 200,
+    contentType: "text/html; charset=utf-8",
+    body: FIXTURE
+  }));
 }
 
-async function launch(hostRules) {
+async function launch() {
   const profile = fs.mkdtempSync(path.join(os.tmpdir(), "decaf-e2e-"));
   const context = await playwright.chromium.launchPersistentContext(profile, {
     channel: "chromium",
     headless: true,
     args: [
       `--disable-extensions-except=${root}`,
-      `--load-extension=${root}`,
-      ...(hostRules ? [`--host-resolver-rules=${hostRules}`] : [])
+      `--load-extension=${root}`
     ]
   });
   const worker = context.serviceWorkers()[0] || (await context.waitForEvent("serviceworker"));
@@ -83,15 +92,16 @@ async function launch(hostRules) {
 }
 
 test("Decaf works in a real Chromium", { skip: skipFixture }, async () => {
-  const { server, port } = await serve();
   const failures = [];
   let session = null;
 
   try {
-    session = await launch("MAP www.youtube.com 127.0.0.1,EXCLUDE localhost");
+    session = await launch();
     const { context, extensionId } = session;
     context.on("weberror", (error) => failures.push(String(error.error())));
-    const url = (route) => `http://www.youtube.com:${port}${route}`;
+    const origin = "https://www.youtube.com";
+    await serveFixture(context, origin);
+    const url = (route) => `${origin}${route}`;
 
     // 1. The feed is emptied in place, and the page still works.
     const page = await context.newPage();
@@ -158,6 +168,21 @@ test("Decaf works in a real Chromium", { skip: skipFixture }, async () => {
     assert.equal(await page.locator("#badge").isVisible(), true, "a real message can still be noticed");
     assert.match(await page.evaluate(() => getComputedStyle(document.getElementById("badge")).filter), /grayscale\(1\)/);
 
+    // A badge the site only paints. The mark has to land on the pill, because a
+    // filter on the number inside it would leave the colour untouched — which is
+    // something only a real engine can be asked about.
+    await page.waitForFunction(() => document.getElementById("pill")?.classList.contains("decaf-badge"));
+    assert.equal(
+      await page.evaluate(() => document.getElementById("pill-count").classList.contains("decaf-badge")),
+      false,
+      "the number inside the pill is not the thing marked"
+    );
+    assert.match(
+      await page.evaluate(() => getComputedStyle(document.getElementById("pill")).filter),
+      /grayscale\(1\)/,
+      "the colour itself is drained, not just the digit"
+    );
+
     // 6. Full color, on request, for one page only.
     await page.goto(url("/watch?v=abc123"));
     await page.waitForFunction(() => document.documentElement.classList.contains("decaf-media"));
@@ -200,7 +225,6 @@ test("Decaf works in a real Chromium", { skip: skipFixture }, async () => {
     assert.deepEqual(failures, [], "no page or worker errors");
   } finally {
     await session?.context.close();
-    await new Promise((resolve) => server.close(resolve));
     if (session) fs.rmSync(session.profile, { recursive: true, force: true });
   }
 });
