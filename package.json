@@ -2,9 +2,14 @@
   "name": "decaf",
   "version": "1.0.0",
   "private": true,
-  "description": "Decaf \u2014 a Chrome extension that calms feed-driven sites.",
+  "description": "Decaf — a Chrome extension that calms feed-driven sites.",
   "scripts": {
+    "build": "node scripts/build.mjs",
+    "watch": "node scripts/build.mjs --watch",
+    "zip": "node scripts/build.mjs --zip",
+    "clean": "node scripts/build.mjs --clean-only",
     "test": "node --test",
+    "verify": "npm run build && npm run test",
     "icons": "node tools/make-icons.js"
   },
   "devDependencies": {

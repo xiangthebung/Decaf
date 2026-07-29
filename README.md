@@ -23,7 +23,9 @@ It is not a blocker. It never freezes a page, never takes over the window, and n
 
 **Hide comments and replies** (on by default)
 
-Comment threads, reply threads and live chat are hidden on YouTube, Instagram, Reddit, TikTok, X, Facebook, LinkedIn and Twitch. The post, photo or video itself stays.
+Comment threads, reply threads and live chat are hidden on YouTube, Instagram, TikTok, X, Facebook, LinkedIn and Twitch. The post, photo or video itself stays.
+
+Reddit is capped instead of hidden, because there the thread is the page. A post permalink is literally `/r/<sub>/comments/<id>/`, and a link post has no body of its own — someone who searched for a problem and landed on Reddit came for the thread, and hiding it would leave a title, no answer, and no way forward. So the top-level comments stay, along with the one reply that usually confirms them. What goes is the argument below that, and the loader Reddit uses to fetch another thousand comments while you scroll: the thread ends instead of growing.
 
 **Extra friction** (off by default)
 
@@ -68,17 +70,44 @@ Everything applies the moment you change it. There is no Save button and no draf
 
 ## Install from source
 
+```sh
+npm install
+npm run build
+```
+
 1. Open `chrome://extensions`.
 2. Turn on **Developer mode**.
-3. Choose **Load unpacked** and select this folder.
+3. Choose **Load unpacked** and select **`dist/`** — not this folder.
 4. The settings page opens on first install. Chrome 105 or newer is required.
+
+`dist/` is what the build assembles: the twenty-three files the extension actually
+runs, and none of the tests, tools or documentation sitting next to them. It is also
+exactly what `npm run zip` packages, so the store artifact cannot drift from the
+source the way a hand-assembled archive does.
 
 ## Development
 
 ```sh
 npm install     # jsdom, for the tests only — the extension itself has no dependencies
+npm run build   # assemble dist/
+npm run watch   # reassemble on every save; press reload in chrome://extensions
 npm test        # unit tests, jsdom DOM tests, and packaging checks
+npm run verify  # tests, then a build
+npm run zip     # dist/ -> artifacts/decaf-<version>.zip, inflated and CRC-checked
+npm run clean   # remove dist/ and artifacts/
 npm run icons   # regenerate icons/*.png and icons/*.svg from tools/make-icons.js
+```
+
+The build is a copy, not a bundle — there is nothing to transpile. It exists so that
+every extension in this workspace is loaded the same way, and so the allowlist in
+`scripts/build.mjs` cannot quietly fall behind: `verifyReferences` reads `dist/` back
+and resolves every manifest path, HTML `src`/`href`, JS import and `icons/…` string
+literal, failing the build on anything missing. That last case matters here — eight
+of the twelve icons are named only inside the object `background.js` hands to
+`chrome.action.setIcon`, so nothing in the manifest points at them.
+
+```sh
+node scripts/negative-test.mjs   # prove the reference check still fails when it should
 ```
 
 There are also opt-in browser tests that load the unpacked extension into a real Chromium, including a genuine three-second hold:
@@ -98,7 +127,7 @@ node tools/shots.js /tmp/decaf      # screenshots of the notice, popup and setti
 node tools/probe.js https://www.youtube.com/   # report how a live page is built
 ```
 
-`tools/audit.js` is the check that matters after a redesign. For each site it opens the feed and then one post, and reports the card's width, feed items still showing, comment threads, rails, red badges, playing video, and every number left on the page — the last one as a note, so a count Decaf's own rules cannot see is still visible to a human reading the output.
+`tools/audit.js` is the check that matters after a redesign. For each site it opens the feed and then one post, and reports the card's width, feed items still showing, comment threads, rails, red badges, playing video, and every number left on the page — the last one as a note, so a count Decaf's own rules cannot see is still visible to a human reading the output. On Reddit it also reports how much of the thread the cap left behind, and fails if the answer is gone as loudly as it fails if the scroll is still there.
 
 | File | Role |
 | --- | --- |
@@ -130,6 +159,8 @@ Five design rules worth knowing before changing anything:
 - Instagram's "More posts from this account" grid below an open post is left in place. It is drawn by the same renderer as the post, and the earlier attempt to find and remove it made Instagram stutter badly enough to be worse than the grid.
 - The **Show in color** button sits in the bottom-right corner, and moves above or beside a site's own furniture when it finds some there: Instagram's message dock, Threads' compose button, X's pair of round buttons. It looks at three points across itself, tries the corner, then above it, then beside it. Something a site draws in the page at the very bottom of a long document — Twitch's promo bar, for one — can still end up underneath it.
 - Comment hiding on Instagram, X and Facebook relies on structure rather than stable hooks, so it is the first thing likely to need attention after a redesign.
+- Reddit's cap rests on three hooks read off live threads: the `depth` attribute new Reddit puts on every `shreddit-comment`, the `src` of the partial it fetches more replies through, and the `.child` wrapper old Reddit adds per level. All three fail in the safe direction — rename any of them and the selector matches nothing, so the full thread comes back rather than the page going blank. Old Reddit's own "load more comments" link is left alone: it only loads when it is clicked, so it cannot grow a thread underneath you the way new Reddit's scroll does.
+- The cap has no per-page escape hatch, and a comment permalink is not one: new Reddit serves that URL as the same thread with the same depths rather than re-rooting the subtree, so a reply at depth 2 stays capped there too. Reading a deep chain means turning the switch off. That is the deliberate cost of the cap being three CSS selectors with no runtime state behind them — measured on live threads, the first two levels are most of what is there anyway (7 top-level, 8 replies, 3 below on the thread this was checked against).
 - Sites redirect people to country hosts — `ca.pinterest.com`, `en-gb.facebook.com`, `ca.linkedin.com` — so those are matched by pattern. The pattern only accepts a country code or `www`, which keeps Decaf away from `business.pinterest.com` and `studio.youtube.com`.
 - Threads ships hashed class names and no `<main>`, so its feed is matched structurally with `:has()`. That is the least stable selector in the table.
 - Bluesky gives its right rail no hooks either, so the cards there are told apart by what they hold: the one with the search box stays, the last one — the site's own footer links — stays, and the trends and follow suggestions between them go.

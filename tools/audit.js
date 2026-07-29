@@ -23,7 +23,9 @@ const shots = path.join(os.tmpdir(), "decaf-audit");
 
 /**
  * `open` is a content route (never a feed) that lists links to single posts, and
- * `link` picks one out. `comments` is what a comment thread looks like there.
+ * `link` picks one out. `comments` is what must not be showing on a post: on most
+ * sites that is the thread itself, on Reddit only the part of it Decaf caps, since
+ * a Reddit thread is the answer someone came for and stays visible.
  */
 const SITES = {
   youtube: {
@@ -60,7 +62,12 @@ const SITES = {
     feed: "https://www.reddit.com/",
     open: "https://www.reddit.com/r/aww/",
     link: "a[href*='/comments/']",
-    comments: "shreddit-comment-tree, #comment-tree, .commentarea",
+    // Deep replies and the loader that fetches a thousand more. Top-level
+    // comments are meant to still be here, so they are checked separately below.
+    comments: "shreddit-comment:not([depth='0']):not([depth='1'])," +
+      " shreddit-comment faceplate-partial[src*='/svc/shreddit/more-comments/']," +
+      " .commentarea .child .child .comment",
+    kept: "shreddit-comment[depth='0'], .commentarea > .sitetable > .comment",
     media: "shreddit-post img, [slot='post-media-container'] img"
   },
   facebook: {
@@ -225,7 +232,7 @@ const QUIET_CHECK = () => {
   };
 };
 
-const MEDIA_CHECK = ({ media, comments, rails }) => {
+const MEDIA_CHECK = ({ media, comments, kept, rails }) => {
   const seen = (el) => Boolean(el && el.getClientRects().length);
   const pick = (selector) => {
     if (!selector) return null;
@@ -239,6 +246,9 @@ const MEDIA_CHECK = ({ media, comments, rails }) => {
     grayscale: primary ? getComputedStyle(primary).filter : "no media found",
     colorPill: Boolean(pill) && seen(pill),
     commentsVisible: comments ? [...document.querySelectorAll(comments)].filter(seen).length : "n/a",
+    // What the cap is supposed to leave behind. Only set where hiding a thread
+    // outright would take the answer with it.
+    keptVisible: kept ? [...document.querySelectorAll(kept)].filter(seen).length : "n/a",
     railsVisible: rails ? [...document.querySelectorAll(rails)].filter(seen).length : "n/a"
   };
 };
@@ -347,6 +357,7 @@ async function main() {
       const media = await tab.evaluate(MEDIA_CHECK, {
         media: site.media,
         comments: site.comments,
+        kept: site.kept,
         rails: site.rails
       });
       const quiet = await tab.evaluate(QUIET_CHECK);
@@ -368,12 +379,17 @@ async function main() {
       if (typeof media.commentsVisible === "number" && media.commentsVisible > 0) {
         problems.push(`${media.commentsVisible} comment thread(s) visible`);
       }
+      // A cap that leaves nothing behind has hidden the answer, which is the
+      // failure it exists to prevent. Reported as loudly as a leak.
+      if (typeof media.keptVisible === "number" && media.keptVisible === 0) {
+        problems.push("the cap took the whole thread: no comment left to read");
+      }
       if (typeof media.railsVisible === "number" && media.railsVisible > 0) {
         problems.push(`${media.railsVisible} recommendation rail(s) visible`);
       }
       if (quiet.redBadges.length) problems.push(`red badge: ${JSON.stringify(quiet.redBadges[0])}`);
       if (quiet.unmaskedCount) problems.push(`${quiet.unmaskedCount} unmasked count(s): ${quiet.unmaskedCounts.join(", ")}`);
-      log(`   opened    ${problems.length ? "FAIL" : "ok"}  ${media.route} · comments ${media.commentsVisible} · rails ${media.railsVisible} · dashes ${quiet.dashes}`);
+      log(`   opened    ${problems.length ? "FAIL" : "ok"}  ${media.route} · comments ${media.commentsVisible} · kept ${media.keptVisible} · rails ${media.railsVisible} · dashes ${quiet.dashes}`);
       log(`             ${new URL(target).pathname.slice(0, 60)}`);
       for (const problem of problems) log(`             → ${problem}`);
       for (const note of notes) log(`             · ${note}`);
