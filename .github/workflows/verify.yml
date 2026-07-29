@@ -1,0 +1,40 @@
+name: verify
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Node 24, matching the version this is developed on. Several of these
+      # repositories have dependencies whose floor is above Node 20, and the
+      # failures land at module load rather than in a test, which makes them read
+      # as infrastructure noise instead of a version problem.
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      # `verify` builds first and then tests, in that order on purpose: the
+      # browser tests load `dist/`, which is the directory `npm run zip` packages,
+      # so they exercise the artefact a user installs rather than the repository.
+      - run: npm run verify
+
+      # The packaged artefact comes out of the same code path a release does, so a
+      # broken zip step fails here rather than on release day.
+      - run: npm run zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decaf-unpacked
+          path: dist/
+          if-no-files-found: error
