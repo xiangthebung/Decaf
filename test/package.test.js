@@ -158,6 +158,50 @@ test("comment hiding covers the sites the settings page promises", () => {
 });
 
 /**
+ * On Reddit the thread is the document, not an appendix to it: a permalink is
+ * /r/<sub>/comments/<id>/, and a link post has no body of its own. Hiding the tree
+ * leaves a title and no answer, so it is capped instead — top-level comments and
+ * the first reply stay, everything below goes, and the loader that would fetch a
+ * thousand more is dropped so the thread ends rather than grows.
+ *
+ * This is the test that stops the blanket version coming back, because hiding the
+ * whole tree is the obvious thing to write and it reads as a broken page.
+ */
+test("Reddit's thread is capped, never hidden outright", () => {
+  const PREFIX = "html.decaf-hide-comments.decaf-site-reddit ";
+  const hidden = [];
+  for (const rule of cssRules(contentCss)) {
+    if (!/display:\s*none/.test(rule.body)) continue;
+    for (const selector of rule.selectors) {
+      if (selector.startsWith(PREFIX)) hidden.push(selector.slice(PREFIX.length).trim());
+    }
+  }
+  assert.ok(hidden.length, "content.css hides nothing on a Reddit thread");
+
+  for (const target of hidden) {
+    assert.doesNotMatch(
+      target,
+      /^(shreddit-comment-tree|#comment-tree|\.commentarea)$/,
+      `"${target}" hides the whole thread instead of capping it`
+    );
+  }
+
+  const cap = hidden.find((target) => /^shreddit-comment:not/.test(target));
+  assert.ok(cap, "no rule caps a new-Reddit thread by depth");
+  assert.match(cap, /:not\(\[depth='0'\]\)/, "top-level comments have to survive the cap");
+  assert.match(cap, /:not\(\[depth='1'\]\)/, "the reply that confirms the answer has to survive it");
+
+  assert.ok(
+    hidden.some((target) => target.includes("/svc/shreddit/more-comments/")),
+    "the loader that grows the thread without end has to go, or the cap only hides depth"
+  );
+  assert.ok(
+    hidden.some((target) => /\.commentarea\s+\.child\s+\.child\s+\.comment/.test(target)),
+    "no rule caps an old-Reddit thread, where depth is a .child wrapper per level"
+  );
+});
+
+/**
  * A game's board keeps its colour — Queens is played by reading the coloured
  * regions, and its crowns are gold — while the page around it is drained like any
  * other. Two things have to hold for that: the board is spared, and the sparing

@@ -222,10 +222,6 @@ html.decaf-hide-feed .decaf-feed-host {
 html.decaf-hide-comments.decaf-site-youtube #comments,
 html.decaf-hide-comments.decaf-site-youtube ytd-comments,
 html.decaf-hide-comments.decaf-site-youtube ytm-comment-section-renderer,
-html.decaf-hide-comments.decaf-site-reddit shreddit-comment-tree,
-html.decaf-hide-comments.decaf-site-reddit #comment-tree,
-html.decaf-hide-comments.decaf-site-reddit .commentarea,
-html.decaf-hide-comments.decaf-site-reddit faceplate-batch > shreddit-comment,
 html.decaf-hide-comments.decaf-site-tiktok [data-e2e='comment-list'],
 html.decaf-hide-comments.decaf-site-tiktok [data-e2e='comment-level-1'],
 html.decaf-hide-comments.decaf-site-tiktok [data-e2e='browse-comment'],
@@ -242,6 +238,40 @@ html.decaf-hide-comments.decaf-site-linkedin .comments-comment-list__container,
 html.decaf-hide-comments.decaf-site-twitch #live-chat-frame,
 html.decaf-hide-comments.decaf-site-twitch [data-a-target='chat-shell'],
 html.decaf-hide-comments.decaf-site-twitch section[aria-label*='Chat' i] {
+  display: none !important;
+}
+
+/**
+ * Reddit is the exception, and it has to be one.
+ *
+ * A post permalink is literally /r/<sub>/comments/<id>/: the thread is not an
+ * appendix to the post the way YouTube's comments sit under a video, it is the
+ * document. On a link post there is nothing else on the page at all. Hiding the
+ * tree there leaves a title, no answer, and no way forward but a switch that
+ * changes seven other sites — which is Decaf leaving someone stuck, the one thing
+ * it promises never to do. Someone who searched for a problem and landed on
+ * Reddit came for the thread.
+ *
+ * So the thread is capped rather than hidden. The answer is at the top: a
+ * top-level comment, or the one reply confirming it. The part that keeps you
+ * there for an hour is the argument below that, and the thousand comments Reddit
+ * will keep fetching while you scroll.
+ *
+ * Three hooks, all read off live threads rather than guessed at:
+ *   - new Reddit gives every comment its own `depth`, so depth 2 and below go;
+ *   - it ships only the first ~35 comments and fetches the rest through a
+ *     partial that names itself in its `src`. Dropping those is the real cap:
+ *     the thread ends instead of growing, and no dead "more replies" button is
+ *     left behind to be clicked at nothing;
+ *   - old Reddit adds one `.child` wrapper per level, so two of them is depth 2.
+ *
+ * Every one of these fails in the safe direction. If Reddit renames any of them
+ * the selector matches nothing and the whole thread comes back — visible, which
+ * is a thread Decaf failed to calm, rather than a page with no answer on it.
+ */
+html.decaf-hide-comments.decaf-site-reddit shreddit-comment:not([depth='0']):not([depth='1']),
+html.decaf-hide-comments.decaf-site-reddit shreddit-comment faceplate-partial[src*='/svc/shreddit/more-comments/'],
+html.decaf-hide-comments.decaf-site-reddit .commentarea .child .child .comment {
   display: none !important;
 }
 
@@ -527,8 +557,11 @@ html.decaf-on .decaf-notice .decaf-notice-hold {
   width: 100% !important;
   max-width: none !important;
   margin: 20px 0 0 !important;
-  padding: 13px 16px !important;
-  overflow: hidden !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 12px !important;
+  padding: 11px 16px !important;
   border: 1px solid #ded7cc !important;
   border-radius: 12px !important;
   background: #faf8f5 !important;
@@ -554,18 +587,35 @@ html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] {
   border-color: #c9bfae !important;
 }
 
-html.decaf-on .decaf-notice .decaf-notice-fill {
+html.decaf-on .decaf-notice .decaf-notice-ring {
   display: block !important;
-  position: absolute !important;
-  inset: 0 !important;
-  width: auto !important;
-  height: auto !important;
-  transform-origin: left center !important;
-  background: #ece3d6 !important;
-  pointer-events: none !important;
+  position: relative !important;
+  width: 30px !important;
+  height: 30px !important;
+  flex: 0 0 auto !important;
+  /* Starts the sweep at twelve o'clock instead of three. */
+  transform: rotate(-90deg) !important;
+  overflow: visible !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-track,
+html.decaf-on .decaf-notice .decaf-notice-fill {
+  fill: none !important;
+  stroke-width: 3.5 !important;
+  stroke-linecap: round !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-track {
+  stroke: #e2dbd0 !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-fill {
+  stroke: #6f4e37 !important;
+  /* 2*pi*r for r=19, so one full circumference is one full hold. */
+  stroke-dasharray: 119.4 !important;
   /* Deliberately not !important: an important declaration would outrank the
-     animation below and the progress bar would never move. */
-  transform: scaleX(0);
+     animation below and the ring would never move. */
+  stroke-dashoffset: 119.4;
 }
 
 html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] .decaf-notice-fill {
@@ -596,10 +646,10 @@ html.decaf-on .decaf-notice .decaf-hold-19 .decaf-notice-fill {
 
 @keyframes decaf-fill {
   from {
-    transform: scaleX(0);
+    stroke-dashoffset: 119.4;
   }
   to {
-    transform: scaleX(1);
+    stroke-dashoffset: 0;
   }
 }
 
@@ -640,8 +690,12 @@ html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold[data-holding="true"] {
   border-color: #4a423b !important;
 }
 
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-track {
+  stroke: #3a342e !important;
+}
+
 html.decaf-on .decaf-notice.decaf-dark .decaf-notice-fill {
-  background: #2c2723 !important;
+  stroke: #d8b79a !important;
 }
 
 html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold:focus-visible {
@@ -722,7 +776,9 @@ html.decaf-on .decaf-pill.decaf-pill-aside {
 @media (prefers-reduced-motion: reduce) {
   html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] .decaf-notice-fill {
     animation-name: none !important;
-    transform: scaleX(1);
+    /* Shown complete rather than animating. The hold still takes its full time —
+       this is the indicator standing still, not the wait being skipped. */
+    stroke-dashoffset: 0;
     opacity: 0.5 !important;
   }
 }

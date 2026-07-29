@@ -228,6 +228,25 @@
     return element;
   }
 
+  const SVG_NS = "http://www.w3.org/2000/svg";
+
+  /**
+   * SVG needs its own namespace, so `make` cannot build it: `createElement("svg")`
+   * produces an unknown HTML element that lays out but never paints.
+   *
+   * `className` is set through `setAttribute` for the same reason — `className` on
+   * an SVG element is a read-only `SVGAnimatedString`, and assigning to it silently
+   * does nothing.
+   */
+  function makeSvg(tag, className, attributes = {}) {
+    const element = document.createElementNS(SVG_NS, tag);
+    if (className) element.setAttribute("class", className);
+    for (const [name, value] of Object.entries(attributes)) {
+      element.setAttribute(name, String(value));
+    }
+    return element;
+  }
+
   /* -------------------------------------------------------- quiet visuals -- */
 
   function contextText(element) {
@@ -810,10 +829,32 @@
     const button = make("button", "decaf-notice-hold");
     button.type = "button";
     button.setAttribute("aria-describedby", "decaf-notice-hint");
-    const fill = make("span", "decaf-notice-fill");
-    fill.setAttribute("aria-hidden", "true");
+
+    /*
+     * The progress ring.
+     *
+     * This was a bar that wiped across the whole button, which worked but looked
+     * like a download. A ring reads as a deliberate wait — the same shape a camera
+     * shutter or a "hold to confirm" uses — and it leaves the button's own surface
+     * alone, so the label stays legible the whole way through instead of being
+     * overrun by a moving background.
+     *
+     * The ring keeps `.decaf-notice-fill` as its class. The name is still accurate,
+     * and the browser test that proves the hold is not a dead button finds the
+     * animating element by it.
+     */
+    const ring = makeSvg("svg", "decaf-notice-ring", {
+      viewBox: "0 0 44 44",
+      "aria-hidden": "true",
+      focusable: "false"
+    });
+    ring.append(
+      makeSvg("circle", "decaf-notice-track", { cx: 22, cy: 22, r: 19 }),
+      makeSvg("circle", "decaf-notice-fill", { cx: 22, cy: 22, r: 19 })
+    );
+
     const label = make("span", "decaf-notice-label", `Hold to open for ${D.PASS_MINUTES} minutes`);
-    button.append(fill, label);
+    button.append(ring, label);
 
     const hint = make("p", "decaf-notice-hint", holdHint());
     hint.id = "decaf-notice-hint";

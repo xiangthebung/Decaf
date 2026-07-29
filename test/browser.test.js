@@ -4,9 +4,17 @@
  * Optional end-to-end checks in a real Chromium with the extension loaded.
  * Playwright is not a dependency of this project, so these skip unless you opt in:
  *
+ *   npm run build
  *   npm install --no-save playwright && npx playwright install chromium
  *   DECAF_BROWSER=1 npm test          # against a local fixture
  *   DECAF_LIVE=1 npm test             # also against the real sites (network)
+ *
+ * They load `dist/`, not the repository root. Both work — the manifest sits at the
+ * root as well — but `dist/` is what `npm run zip` packages, what the README tells a
+ * person to load, and what a reviewer installs. Pointed at the root, these tests
+ * were the only thing in the project that never once exercised the artifact being
+ * shipped: a build that assembled the wrong file list, or dropped one, would have
+ * passed every check here.
  */
 
 const assert = require("node:assert/strict");
@@ -16,6 +24,8 @@ const path = require("node:path");
 const test = require("node:test");
 
 const root = path.resolve(__dirname, "..");
+/** The built extension: what gets zipped, and so what gets tested. */
+const dist = path.join(root, "dist");
 const D = require("../core.js");
 
 let playwright = null;
@@ -26,10 +36,15 @@ try {
 }
 
 const missing = !playwright ? "playwright is not installed" : false;
-const skipFixture = missing || (process.env.DECAF_BROWSER !== "1" && process.env.DECAF_LIVE !== "1"
+/* Said out loud rather than skipped quietly: somebody who set DECAF_BROWSER=1 asked
+   for this test, and "no dist/" is a different answer from "not today". */
+const unbuilt = fs.existsSync(path.join(dist, "manifest.json"))
+  ? false
+  : "dist/ is not built — run `npm run build` first";
+const skipFixture = missing || unbuilt || (process.env.DECAF_BROWSER !== "1" && process.env.DECAF_LIVE !== "1"
   ? "set DECAF_BROWSER=1 to run the browser test"
   : false);
-const skipLive = missing || (process.env.DECAF_LIVE !== "1"
+const skipLive = missing || unbuilt || (process.env.DECAF_LIVE !== "1"
   ? "set DECAF_LIVE=1 to check the real sites over the network"
   : false);
 
@@ -63,17 +78,92 @@ const FIXTURE = `<!doctype html>
 </body></html>`;
 
 /**
+ * A Reddit thread as Reddit actually builds one, measured off live threads with
+ * tools/probe.js. Reddit refuses automated browsers more often than not, so the
+ * shape is reproduced here to keep the cap checkable without the network:
+ *
+ *   - comments are a flat run of <shreddit-comment> carrying their own `depth`,
+ *     with the replies Reddit ships inline nested inside their parent;
+ *   - the rest of the thread arrives through a partial that names itself in its
+ *     `src` — 35 comments came with 35 of these, every one a "more replies";
+ *   - the post is a separate element, and on a link post it is all there is
+ *     besides the thread.
+ */
+const REDDIT_THREAD = `<!doctype html>
+<html><head><title>Why is my dishwasher leaking? : r/fixit</title></head>
+<body>
+  <header id="nav">reddit <input id="site-search" type="search"></header>
+  <main id="main-content">
+    <shreddit-post id="post" post-title="Why is my dishwasher leaking?" style="display:block">
+      <h1 id="post-title">Why is my dishwasher leaking?</h1>
+    </shreddit-post>
+    <shreddit-comment-tree id="comment-tree" style="display:block">
+      <section>
+        <shreddit-comment id="top-1" depth="0" style="display:block">
+          <p>Check the drain filter first.</p>
+          <shreddit-comment id="reply-1" depth="1" style="display:block">
+            <p>That was it, thanks.</p>
+            <shreddit-comment id="deep-1" depth="2" style="display:block">
+              <p>Well actually, on my model...</p>
+            </shreddit-comment>
+          </shreddit-comment>
+          <faceplate-partial id="more-1" style="display:block"
+            src="/svc/shreddit/more-comments/fixit/t3_abc123?sort=CONFIDENCE&amp;start=5">
+            <button id="more-button">789 more replies</button>
+          </faceplate-partial>
+        </shreddit-comment>
+        <shreddit-comment id="top-2" depth="0" style="display:block">
+          <p>Could be the door gasket.</p>
+        </shreddit-comment>
+        <shreddit-comment id="top-3" depth="0" style="display:block">
+          <p>Mine did this when the tub cracked.</p>
+        </shreddit-comment>
+      </section>
+    </shreddit-comment-tree>
+  </main>
+</body></html>`;
+
+/**
+ * The same thread on old Reddit, which has no depth attribute: it wraps each
+ * level in a .child, so two of them is depth 2.
+ */
+const OLD_REDDIT_THREAD = `<!doctype html>
+<html><head><title>Why is my dishwasher leaking? : fixit</title></head>
+<body>
+  <div id="siteTable"><div id="post" class="thing">Why is my dishwasher leaking?</div></div>
+  <div class="commentarea">
+    <div class="sitetable">
+      <div id="old-top" class="comment">
+        <p>Check the drain filter first.</p>
+        <div class="child">
+          <div class="sitetable">
+            <div id="old-reply" class="comment">
+              <p>That was it, thanks.</p>
+              <div class="child">
+                <div class="sitetable">
+                  <div id="old-deep" class="comment"><p>Well actually, on my model...</p></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</body></html>`;
+
+/**
  * The fixture is answered from inside the browser rather than from a local
  * server. Decaf is keyed to real hostnames, and every hostname it supports is on
  * the HSTS preload list, so a plain-HTTP stand-in is force-upgraded to HTTPS and
  * never loads. Fulfilling the request instead keeps the real origin without
  * needing a certificate.
  */
-async function serveFixture(context, origin) {
+async function serveFixture(context, origin, body = FIXTURE) {
   await context.route(`${origin}/**`, (route) => route.fulfill({
     status: 200,
     contentType: "text/html; charset=utf-8",
-    body: FIXTURE
+    body
   }));
 }
 
@@ -83,8 +173,8 @@ async function launch() {
     channel: "chromium",
     headless: true,
     args: [
-      `--disable-extensions-except=${root}`,
-      `--load-extension=${root}`
+      `--disable-extensions-except=${dist}`,
+      `--load-extension=${dist}`
     ]
   });
   const worker = context.serviceWorkers()[0] || (await context.waitForEvent("serviceworker"));
@@ -144,12 +234,18 @@ test("Decaf works in a real Chromium", { skip: skipFixture }, async () => {
     await page.mouse.down();
     await page.waitForTimeout(1000);
     assert.equal(await notice.count(), 1, "one second is not enough");
-    // The progress bar has to actually move, or the hold feels like a dead button.
+    // The ring has to actually move, or the hold feels like a dead button.
+    // Read from the dash rather than from a transform matrix: the indicator is an
+    // SVG circle whose sweep is `stroke-dashoffset` counting down from the
+    // circumference, and a circle has no transform of its own, so the old matrix
+    // read returned a flat 1 and would have passed a completely frozen ring.
     const progress = await page.evaluate(() => {
-      const matrix = new DOMMatrix(getComputedStyle(document.querySelector(".decaf-notice-fill")).transform);
-      return matrix.a;
+      const style = getComputedStyle(document.querySelector(".decaf-notice-fill"));
+      const circumference = parseFloat(style.strokeDasharray);
+      const remaining = parseFloat(style.strokeDashoffset);
+      return (circumference - remaining) / circumference;
     });
-    assert.ok(progress > 0.15 && progress < 0.75, `progress bar should be part way across, was ${progress}`);
+    assert.ok(progress > 0.15 && progress < 0.75, `ring should be part way round, was ${progress}`);
     await page.waitForTimeout(2600);
     await page.mouse.up();
     await page.waitForSelector(".decaf-notice", { state: "detached" });
@@ -223,6 +319,79 @@ test("Decaf works in a real Chromium", { skip: skipFixture }, async () => {
     assert.equal(await popup.locator("#pass-row").isVisible(), false);
 
     assert.deepEqual(failures, [], "no page or worker errors");
+  } finally {
+    await session?.context.close();
+    if (session) fs.rmSync(session.profile, { recursive: true, force: true });
+  }
+});
+
+/**
+ * On Reddit the thread is the page, so it is capped rather than hidden. Asking a
+ * real engine is the only way to know: three of the selectors involved are
+ * `:not([depth=...])`, a descendant chain, and an attribute substring match, and
+ * a string in a stylesheet proves none of them work.
+ *
+ * What has to hold is both halves at once — the answer is still readable, and the
+ * scroll is gone. Either one alone is a bug: hiding everything leaves a page with
+ * no answer on it, and hiding nothing leaves an hour of argument.
+ */
+test("a Reddit thread is capped, not emptied", { skip: skipFixture }, async () => {
+  let session = null;
+  const failures = [];
+  try {
+    session = await launch();
+    const { context } = session;
+    await serveFixture(context, "https://www.reddit.com", REDDIT_THREAD);
+    await serveFixture(context, "https://old.reddit.com", OLD_REDDIT_THREAD);
+
+    const shown = (page, id) => page.evaluate((target) => {
+      const element = document.getElementById(target);
+      if (!element) return "absent";
+      return getComputedStyle(element).display !== "none";
+    }, id);
+
+    // New Reddit.
+    const page = await context.newPage();
+    page.on("pageerror", (error) => failures.push(String(error)));
+    await page.goto("https://www.reddit.com/r/fixit/comments/abc123/why_is_my_dishwasher_leaking/");
+    await page.waitForFunction(() => document.documentElement.classList.contains("decaf-hide-comments"));
+    assert.equal(await page.evaluate(() => document.documentElement.classList.contains("decaf-site-reddit")), true);
+    assert.equal(await page.evaluate(() => document.documentElement.classList.contains("decaf-media")), true);
+
+    // The answer someone searched for is still on the page.
+    assert.equal(await shown(page, "post"), true, "the post itself has to stay");
+    assert.equal(await shown(page, "comment-tree"), true, "the thread is capped, never hidden outright");
+    for (const id of ["top-1", "top-2", "top-3"]) {
+      assert.equal(await shown(page, id), true, `${id}: a top-level comment is the answer`);
+    }
+    assert.equal(await shown(page, "reply-1"), true, "the reply that confirms the answer stays");
+    assert.equal(
+      await page.locator("#top-1").isVisible(), true,
+      "a capped comment must still be laid out, not just undisplayed"
+    );
+
+    // The scroll is gone.
+    assert.equal(await shown(page, "deep-1"), false, "depth 2 is where the argument starts");
+    assert.equal(await shown(page, "more-1"), false, "the loader that grows the thread has to go");
+    assert.equal(
+      await page.locator("#more-button").isVisible(), false,
+      "no dead button may be left to click at nothing"
+    );
+
+    // Old Reddit: same thread, no depth attribute, one .child per level.
+    const old = await context.newPage();
+    old.on("pageerror", (error) => failures.push(String(error)));
+    await old.goto("https://old.reddit.com/r/fixit/comments/abc123/why_is_my_dishwasher_leaking/");
+    await old.waitForFunction(() => document.documentElement.classList.contains("decaf-hide-comments"));
+    assert.equal(await shown(old, "old-top"), true, "old Reddit keeps its top-level comments too");
+    assert.equal(await shown(old, "old-reply"), true, "and the first reply");
+    assert.equal(await shown(old, "old-deep"), false, "two .child wrappers deep is capped");
+
+    // Neither page may be left frozen.
+    for (const target of [page, old]) {
+      assert.equal(await target.evaluate(() => getComputedStyle(document.documentElement).overflow), "visible");
+    }
+    assert.deepEqual(failures, [], "no page errors");
   } finally {
     await session?.context.close();
     if (session) fs.rmSync(session.profile, { recursive: true, force: true });

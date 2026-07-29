@@ -1,2 +1,10 @@
 node_modules/
-package-lock.json
+
+# Build output. `npm run build` assembles the loadable extension here, and
+# `npm run zip` writes the store artifact. Both are derived from the tracked
+# source, so neither belongs in the repository.
+dist/
+artifacts/
+
+# Screenshots and measurements from tools/audit.js and tools/layout.js.
+outputs/
