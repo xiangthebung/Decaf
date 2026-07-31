@@ -1094,10 +1094,33 @@
   }
 
   /**
+   * DOM fullscreen only paints the fullscreen element and its descendants. Keep
+   * the offer inside that subtree while a site has a player or photo fullscreen;
+   * otherwise it is still outside the fullscreen surface and cannot be used.
+   */
+  function pillHost() {
+    const fullscreen = document.fullscreenElement;
+    if (fullscreen && fullscreen !== pill && !pill?.contains(fullscreen)) return fullscreen;
+    return document.body;
+  }
+
+  /**
    * Everything is grayscale, including what you opened. Some things genuinely
    * need color, so this offers it for this one page — and asks again next time.
    */
   function syncPill() {
+    // A video or image is a replaced element: it cannot render a button appended
+    // to it. Fullscreen is already an explicit request to see that media, so use
+    // the same one-page color grant rather than leaving the person no way to ask.
+    if (
+      active &&
+      route === "media" &&
+      !colorGranted &&
+      document.fullscreenElement?.matches?.("video,img")
+    ) {
+      colorGranted = true;
+      syncRootClasses();
+    }
     const wanted = active && route === "media" && !colorGranted;
     if (!wanted || !document.body) {
       pill?.remove();
@@ -1113,7 +1136,8 @@
         showChip("Full color, just for this page");
       });
     }
-    if (!pill.isConnected) document.body.append(pill);
+    const host = pillHost();
+    if (pill.parentElement !== host) host.append(pill);
     placePill();
   }
 
@@ -1449,6 +1473,7 @@
     window.addEventListener("popstate", onLocationChange);
     window.addEventListener("hashchange", onLocationChange);
     document.addEventListener("yt-navigate-finish", onLocationChange);
+    document.addEventListener("fullscreenchange", syncPill);
     urlTimer = setInterval(onLocationChange, 1000);
   }
 
@@ -1458,6 +1483,7 @@
     window.removeEventListener("popstate", onLocationChange);
     window.removeEventListener("hashchange", onLocationChange);
     document.removeEventListener("yt-navigate-finish", onLocationChange);
+    document.removeEventListener("fullscreenchange", syncPill);
     clearInterval(urlTimer);
     urlTimer = null;
   }
