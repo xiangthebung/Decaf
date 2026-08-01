@@ -91,6 +91,45 @@ test("double slashes and query strings do not confuse routing", () => {
   assert.equal(D.getRoute("https://www.youtube.com/watch?v=a&t=10"), "media");
 });
 
+/**
+ * A page key answers "is this still the same page?", which is not the same
+ * question as "is this the same URL?". Sites rewrite their own URL while a person
+ * sits still on one page, and anything granted for that page has to survive it.
+ */
+test("a site rewriting its own URL is still the same page", () => {
+  const same = (a, b) => assert.equal(D.getPageKey(a), D.getPageKey(b), `${a} vs ${b}`);
+  const differs = (a, b) => assert.notEqual(D.getPageKey(a), D.getPageKey(b), `${a} vs ${b}`);
+
+  const watch = "https://www.youtube.com/watch?v=aBcD1";
+  // YouTube drops the share token a second after a shared link opens, writes the
+  // playhead into `t`, and adds a playlist without changing what is playing.
+  same(watch, "https://www.youtube.com/watch?v=aBcD1&si=share-token");
+  same(watch, "https://www.youtube.com/watch?v=aBcD1&t=42s");
+  same(watch, "https://www.youtube.com/watch?v=aBcD1&list=PL1&index=3");
+  same(watch, "https://www.youtube.com/watch/?v=aBcD1");
+  same(watch, "https://www.youtube.com/watch?v=aBcD1#comments");
+  // The video itself is the one query param that says which page this is.
+  differs(watch, "https://www.youtube.com/watch?v=other");
+
+  // Instagram counts carousel slides in the query.
+  same("https://www.instagram.com/p/Abc123/", "https://www.instagram.com/p/Abc123/?img_index=3");
+  differs("https://www.instagram.com/p/Abc123/", "https://www.instagram.com/p/Xyz789/");
+
+  // Facebook serves every video from one path, so its ids count too.
+  differs("https://www.facebook.com/watch/?v=1", "https://www.facebook.com/watch/?v=2");
+  same("https://www.facebook.com/watch/?v=1", "https://www.facebook.com/watch/?v=1&ref=sharing");
+
+  // Tracking params a share link carries are never part of the answer.
+  same(
+    "https://www.reddit.com/r/x/comments/abc/title/",
+    "https://www.reddit.com/r/x/comments/abc/title/?utm_source=share&utm_medium=web"
+  );
+
+  differs("https://www.youtube.com/", watch);
+  assert.equal(D.getPageKey("https://example.com/"), "", "an unsupported page has no key");
+  assert.equal(D.getPageKey("not a url"), "");
+});
+
 test("every site describes what it pauses and where the feed lives", () => {
   for (const [key, site] of Object.entries(D.SITES)) {
     assert.ok(site.label.length, key);

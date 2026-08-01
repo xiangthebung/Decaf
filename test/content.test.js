@@ -473,6 +473,43 @@ test("full color can be granted for one page at a time", async () => {
   }
 });
 
+/**
+ * The bug this covers: "Show in color" appeared not to work the first time you
+ * used it. It did work — and then the site quietly took it back. YouTube strips
+ * the `si` share token out of a shared link about a second after it opens, and
+ * Decaf read any change to `location.href` as a move to another page, so the
+ * grant was revoked and the offer came back while the person was still watching
+ * the video they had just asked to see in colour. Opening a shared link is the
+ * first thing most people do, which is why it looked like a first-time failure.
+ */
+test("color survives a site rewriting its own URL", async () => {
+  const page = await launchPage({ url: `${WATCH_URL}&si=share-token` });
+  try {
+    page.api.pill().dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    await settle();
+    assert.ok(rootClasses(page).includes("decaf-color"));
+
+    // YouTube cleaning up after itself, the playhead being written, an in-page
+    // anchor being followed: three URLs, one page.
+    for (const url of ["/watch?v=aBcD1", "/watch?v=aBcD1&t=42s", "/watch?v=aBcD1#comments"]) {
+      page.window.history.replaceState({}, "", url);
+      page.api.onLocationChange();
+      await settle();
+      assert.ok(rootClasses(page).includes("decaf-color"), `color was taken back by ${url}`);
+      assert.equal(page.api.pill()?.isConnected, false, `the offer came back on ${url}`);
+    }
+
+    // A different video is a different page, and it asks again.
+    page.window.history.pushState({}, "", "/watch?v=second");
+    page.api.onLocationChange();
+    await settle();
+    assert.equal(rootClasses(page).includes("decaf-color"), false);
+    assert.equal(page.api.pill().isConnected, true);
+  } finally {
+    page.close();
+  }
+});
+
 test("color is not offered on a feed or an ordinary page", async () => {
   const feed = await launchPage({ url: FEED_URL, html: YOUTUBE_HOME });
   try {

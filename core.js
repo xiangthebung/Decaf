@@ -389,6 +389,45 @@
     }
   }
 
+  /**
+   * Which query params say *what* you are looking at rather than how. Almost every
+   * site puts that in the path; these two serve every video or photo they have
+   * from a single path and put the identity in the query.
+   */
+  const IDENTITY_PARAMS = {
+    youtube: ["v"],
+    facebook: ["v", "fbid", "story_fbid", "photo_id", "id"]
+  };
+
+  /**
+   * What identifies the page someone opened, as opposed to whatever happens to be
+   * in the address bar right now.
+   *
+   * Sites rewrite their own URL constantly while a person sits still on one page:
+   * YouTube drops the `si` share token a second after load and writes the playhead
+   * into `t`, Instagram counts carousel slides in `img_index`, and following any
+   * in-page anchor adds a `#hash`. None of those is a move to another page, so
+   * none of them may take back something granted for this one — see
+   * `onLocationChange` in content.js, where a full-href comparison used to revoke
+   * the colour grant a second after it was asked for.
+   *
+   * Joined on a NUL, which cannot appear in a URL, so two different pages can
+   * never collide on one key. "" for anything Decaf does not act on.
+   */
+  function getPageKey(url = "") {
+    const site = getSite(url);
+    if (!site) return "";
+    try {
+      const parsed = new URL(url);
+      // A trailing slash is the same page: /watch and /watch/ are both `media`.
+      const path = parsed.pathname.replace(/\/{2,}/g, "/").replace(/\/+$/, "") || "/";
+      const identity = (IDENTITY_PARAMS[site] || []).map((name) => parsed.searchParams.get(name) ?? "");
+      return [site, path, ...identity].join("\u0000");
+    } catch (_) {
+      return "";
+    }
+  }
+
   function siteLabel(site) {
     return SITES[site]?.label || "";
   }
@@ -544,6 +583,7 @@
     dayKey,
     getSite,
     getRoute,
+    getPageKey,
     siteLabel,
     feedSelectors,
     isActiveForSite,

@@ -161,6 +161,9 @@
   let hidingFeed = false;
   let colorGranted = false;
   let observedUrl = location.href;
+  // Which page this is, ignoring the params and hashes a site rewrites while you
+  // stay on it. See D.getPageKey.
+  let pageKey = D.getPageKey(location.href);
   let observer = null;
   let scanHandle = null;
   let scanTimer = null;
@@ -730,12 +733,6 @@
     touchedElements.add(element);
   }
 
-  /**
-   * If a site has redesigned past every selector in the table, find the feed the
-   * hard way: the smallest thing that contains several feed items. Marking it
-   * lets the same CSS hide it, so a redesign degrades to a small flash of feed
-   * rather than a page that claims to be paused while it is not.
-   */
   /** False in a layout-less environment (tests, print), where nothing can be measured. */
   function hasLayout() {
     return Boolean(document.body?.getClientRects?.().length);
@@ -1354,9 +1351,19 @@
     observedUrl = location.href;
     const nextSite = D.getSite(location.href);
     const nextRoute = D.getRoute(location.href);
-    // Color is granted for one page at a time, so every move asks again.
-    colorGranted = false;
-    passEnded = false;
+    const nextKey = D.getPageKey(location.href);
+    const moved = nextKey !== pageKey;
+    pageKey = nextKey;
+    // Color is granted for one page at a time, so every move asks again — but a
+    // site rewriting its own URL is not a move. YouTube strips the `si` share
+    // token a second after a shared link opens, which is exactly when someone
+    // asks for color, and comparing the whole href took the color straight back
+    // again. The same went for a playhead in `t`, an Instagram carousel counting
+    // slides in `img_index`, and any in-page anchor adding a `#hash`.
+    if (moved) {
+      colorGranted = false;
+      passEnded = false;
+    }
     if (nextSite === site && nextRoute === route) {
       apply();
       return;
