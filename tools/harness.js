@@ -12,7 +12,14 @@ const root = path.resolve(__dirname, "..");
 const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 const copy = (value) => (value === undefined ? undefined : JSON.parse(JSON.stringify(value)));
 
-function createChrome({ storage = {}, tabUrl = "", deferGet = false } = {}) {
+/**
+ * `failIcon` makes `chrome.action.setIcon` reject, the way Chrome does when an
+ * icon file named in the manifest or in background.js is not actually in the
+ * build. It exists so a test can prove the toolbar's title survives a missing
+ * picture — a build that dropped one PNG once stopped the icon *and* the title
+ * from tracking Decaf's state at all.
+ */
+function createChrome({ storage = {}, tabUrl = "", deferGet = false, failIcon = false } = {}) {
   const store = copy(storage) || {};
   const listeners = [];
   const calls = { icons: [], titles: [], alarms: [], openedOptions: 0 };
@@ -83,6 +90,7 @@ function createChrome({ storage = {}, tabUrl = "", deferGet = false } = {}) {
     },
     action: {
       async setIcon(details) {
+        if (failIcon) throw new Error(`Could not load icon '${details.path?.[32] || "?"}' specified in 'icons'.`);
         calls.icons.push(details.path?.[16] || "");
       },
       async setTitle(details) {
@@ -178,14 +186,16 @@ async function launchExtensionPage(page, { storage = {}, tabUrl = "" } = {}) {
 }
 
 /** Runs background.js in a service-worker-like context. */
-function launchWorker({ storage = {} } = {}) {
+function launchWorker({ storage = {}, failIcon = false } = {}) {
   const vm = require("node:vm");
-  const chrome = createChrome({ storage });
-  const context = vm.createContext({ chrome, console });
+  const chrome = createChrome({ storage, failIcon });
+  const warnings = [];
+  const logger = { ...console, warn: (...args) => warnings.push(args.join(" ")) };
+  const context = vm.createContext({ chrome, console: logger });
   vm.runInContext(`this.importScripts = () => {};`, context);
   vm.runInContext(read("core.js"), context);
   vm.runInContext(read("background.js"), context);
-  return { chrome, context };
+  return { chrome, context, warnings };
 }
 
 function click(element) {

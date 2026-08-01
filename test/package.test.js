@@ -48,6 +48,51 @@ test("the manifest is ready to package", () => {
   assert.equal(manifest.version, JSON.parse(read("package.json")).version, "package version matches manifest");
 });
 
+/**
+ * The built extension is what the browser tests load and what `npm run zip`
+ * packages, so anything the build left out has to fail here rather than degrade
+ * quietly in Chrome.
+ *
+ * `scripts/build.mjs` cross-checks this too, but only for the build it has just
+ * run. A dist/ left over from an older build is never re-verified and is still
+ * what gets loaded — which is exactly how a dist/ missing one 32px icon came to be
+ * tested against. Chrome rejected `setIcon`, the service worker's catch kept it
+ * quiet, and the toolbar stopped reporting Decaf's state with nothing to show why.
+ *
+ * Skipped when dist/ has not been built; there is nothing to be wrong about yet.
+ */
+test("a built dist/ has every file the extension asks for at runtime", (t) => {
+  const dist = path.join(root, "dist");
+  if (!fs.existsSync(path.join(dist, "manifest.json"))) {
+    t.skip("dist/ is not built — run `npm run build`");
+    return;
+  }
+  const inDist = (file) => fs.existsSync(path.join(dist, file));
+  const built = JSON.parse(fs.readFileSync(path.join(dist, "manifest.json"), "utf8"));
+
+  for (const file of ["manifest.json", ...EXTENSION_FILES]) {
+    assert.ok(inDist(file), `dist/ is missing ${file} — rebuild it`);
+  }
+  for (const file of [...Object.values(built.icons), ...Object.values(built.action.default_icon)]) {
+    assert.ok(inDist(file), `dist/ is missing ${file} — rebuild it`);
+  }
+  /*
+   * Every icon background.js hands to chrome.action.setIcon, read out of the
+   * source rather than listed again here. Only the default set is in the
+   * manifest, so the other eight are invisible to the check above — and a
+   * missing one of those is the failure that is hardest to notice, because the
+   * toolbar simply stops changing.
+   */
+  const icons = [...new Set(Array.from(
+    fs.readFileSync(path.join(dist, "background.js"), "utf8").matchAll(/["'](icons\/[^"']+\.png)["']/g),
+    (match) => match[1]
+  ))];
+  assert.equal(icons.length, 12, "background.js should name all three icon sets");
+  for (const file of icons) {
+    assert.ok(inDist(file), `dist/ is missing ${file}, which background.js loads — rebuild it`);
+  }
+});
+
 test("the sites Decaf knows about are exactly the sites it is injected into", () => {
   const matches = manifest.content_scripts[0].matches;
   assert.deepEqual(matches, D.MATCHES, "the manifest must inject exactly where core.js says");

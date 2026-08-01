@@ -4,8 +4,10 @@ const assert = require("node:assert/strict");
 const test = require("node:test");
 
 const { launchExtensionPage, settle, click, toggle } = require("../tools/harness.js");
+const D = require("../core.js");
 
-const today = () => new Date().toISOString().slice(0, 10);
+/** A *local* day key, the same one Decaf writes — see the note in content.test.js. */
+const today = () => D.dayKey();
 const switchFor = (page, key) => page.document.querySelector(`input[data-setting="${key}"]`);
 const siteSwitch = (page, key) => page.document.querySelector(`.site[data-site="${key}"] input`);
 

@@ -5,6 +5,11 @@
  *   node scripts/build.mjs --watch      reassemble whenever a source file changes
  *   node scripts/build.mjs --zip        build, then write artifacts/decaf-<version>.zip
  *   node scripts/build.mjs --clean-only remove dist/ and artifacts/
+ *   node scripts/build.mjs --out=DIR    assemble somewhere other than dist/
+ *
+ * `--out` exists for scripts/negative-test.mjs, which proves the reference check
+ * below really fails by assembling a deliberately incomplete extension. Pointed at
+ * dist/ that left the working build broken behind it — see the note in that file.
  *
  * Decaf ships plain ES modules with no dependencies, so there is nothing to
  * transpile or bundle: this "build" is a copy. It exists anyway, for two reasons.
@@ -31,13 +36,22 @@ import { fileURLToPath } from 'node:url';
 import { createZip, verifyZip } from './zip.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const out = path.join(root, 'dist');
 const artifacts = path.join(root, 'artifacts');
 
 const args = process.argv.slice(2);
 const watchMode = args.includes('--watch');
 const cleanOnly = args.includes('--clean-only');
 const zip = args.includes('--zip');
+const outArg = args.find((arg) => arg.startsWith('--out='));
+const out = path.resolve(root, outArg ? outArg.slice('--out='.length) : 'dist');
+/**
+ * How the output is referred to in messages, so `--out` never reads as dist/.
+ * Relative while it is inside the repository, absolute once it is not — a
+ * temporary directory expressed as `../../../AppData/...` is not a legible answer
+ * to "which build failed".
+ */
+const relativeOut = path.relative(root, out).replaceAll(path.sep, '/');
+const outLabel = relativeOut && !relativeOut.startsWith('..') ? `${relativeOut}/` : out;
 
 /**
  * Everything that belongs in a shipped extension, and nothing else.
@@ -177,7 +191,7 @@ async function verifyReferences(files) {
 
   if (problems.length > 0) {
     throw new Error(
-      `build: dist/ references files that are not in it:\n  ${problems.join('\n  ')}\n` +
+      `build: ${outLabel} references files that are not in it:\n  ${problems.join('\n  ')}\n` +
         'Add them to RUNTIME_FILES in scripts/build.mjs.',
     );
   }
@@ -225,7 +239,7 @@ async function build() {
 
   const bytes = files.reduce((total, file) => total + file.data.length, 0);
   console.log(
-    `build complete -> dist/  (${files.length} files, ${(bytes / 1024).toFixed(1)} kB, v${manifest.version})`,
+    `build complete -> ${outLabel}  (${files.length} files, ${(bytes / 1024).toFixed(1)} kB, v${manifest.version})`,
   );
   return manifest.version;
 }

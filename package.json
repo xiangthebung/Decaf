@@ -10,6 +10,7 @@
     "clean": "node scripts/build.mjs --clean-only",
     "test": "node --test",
     "verify": "npm run build && npm run test",
+    "verify:deep": "node tools/verify-deep.js",
     "icons": "node tools/make-icons.js"
   },
   "devDependencies": {

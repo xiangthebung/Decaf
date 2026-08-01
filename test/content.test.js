@@ -5,6 +5,16 @@ const test = require("node:test");
 
 const { launchPage, settle, wait, until } = require("../tools/harness.js");
 const { SITE_FIXTURES, pageFor } = require("../tools/site-fixtures.js");
+const D = require("../core.js");
+
+/**
+ * The same day key Decaf itself writes. It has to come from `core.js`: a pass day
+ * is a *local* day, because that is when a person's day actually rolls over, and
+ * building one here out of `toISOString()` would be a UTC day instead. The two
+ * agree for most of the clock and then quietly stop agreeing every evening west
+ * of Greenwich — which is exactly when these tests started failing.
+ */
+const today = () => D.dayKey();
 
 const FEED_URL = "https://www.youtube.com/";
 const WATCH_URL = "https://www.youtube.com/watch?v=aBcD1";
@@ -359,7 +369,7 @@ test("the second pass of the day takes longer to earn", async () => {
   const page = await launchPage({
     url: FEED_URL,
     html: YOUTUBE_HOME,
-    storage: { passDay: new Date().toISOString().slice(0, 10), passCounts: { youtube: 1 } }
+    storage: { passDay: today(), passCounts: { youtube: 1 } }
   });
   try {
     assert.equal(notice(page).querySelector(".decaf-notice-hint").textContent, "Hold for 7 seconds · 2nd time today");
@@ -696,7 +706,7 @@ test("Decaf never masks its own words", async () => {
   const page = await launchPage({
     url: FEED_URL,
     html: YOUTUBE_HOME,
-    storage: { passDay: new Date().toISOString().slice(0, 10), passCounts: { youtube: 2 } }
+    storage: { passDay: today(), passCounts: { youtube: 2 } }
   });
   try {
     page.api.runScan();

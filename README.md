@@ -116,6 +116,9 @@ There are also opt-in browser tests that load the unpacked extension into a real
 npm install --no-save playwright && npx playwright install chromium
 DECAF_BROWSER=1 npm test            # against a local fixture
 DECAF_LIVE=1 npm test               # also against the real sites, over the network
+node tools/verify-deep.js           # every setting, every page, every route, plus a click-through
+node tools/verify-deep.js settings popup   # named sections only
+node tools/verify-deep.js --headed  # watch it happen
 node tools/layout.js                # the notice inside 15 hostile parent layouts
 node tools/layout.js sites          # the notice on a stand-in for all twelve sites
 node tools/layout.js live           # measure the notice on real pages
@@ -126,6 +129,18 @@ node tools/audit.js reddit x        # just these two
 node tools/shots.js /tmp/decaf      # screenshots of the notice, popup and settings
 node tools/probe.js https://www.youtube.com/   # report how a live page is built
 ```
+
+`tools/verify-deep.js` is the check that matters after changing behaviour. It loads
+`dist/` into a real Chromium and asks, from the outside, whether Decaf does what the
+settings page says: each of the six switches on its own — for what it changes *and*
+for what it must leave alone — every route of all twelve sites, both extension pages
+driven through every state they have, a genuine press-and-hold, the whole Lock
+contract including a writer going behind its back, the toolbar icon, and a walk
+through each site clicking links. What a page *should* look like is always recomputed
+from `core.js`, so a fixture cannot quietly assert the wrong answer, and every claim
+is read back out of the engine — `getComputedStyle`, `getClientRects`, real
+navigations — because most of Decaf is CSS and a selector in a stylesheet proves
+nothing about whether it matches.
 
 `tools/audit.js` is the check that matters after a redesign. For each site it opens the feed and then one post, and reports the card's width, feed items still showing, comment threads, rails, red badges, playing video, and every number left on the page — the last one as a note, so a count Decaf's own rules cannot see is still visible to a human reading the output. On Reddit it also reports how much of the thread the cap left behind, and fails if the answer is gone as loudly as it fails if the scroll is still there.
 
@@ -138,6 +153,8 @@ node tools/probe.js https://www.youtube.com/   # report how a live page is built
 | `options.*` | The four switches, the site list, Lock. |
 | `background.js` | Toolbar icon state and Lock enforcement. |
 | `tools/site-fixtures.js` | Stand-ins for the shell of every supported site, shared by the tests and `tools/layout.js`. |
+| `tools/fixture-site.js` | A small stand-in *site* per host: a feed, a post, a plain page and a game, linked to each other, so a run can navigate rather than only load. Used by `tools/verify-deep.js`. |
+| `tools/verify-deep.js` | End-to-end verification in a real Chromium: every setting, both extension pages, the hold, the Lock, the toolbar icon, and a click-through of all twelve sites. |
 | `tools/attach.js`, `tools/audit.js`, `tools/cdp.js` | Checks the real, signed-in sites by attaching to a Chrome you started yourself. `cdp.js` speaks the DevTools protocol directly, so it does not depend on a Playwright/Chrome version pairing. |
 
 Five design rules worth knowing before changing anything:
