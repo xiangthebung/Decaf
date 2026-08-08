@@ -8,3 +8,16 @@ artifacts/
 
 # Screenshots and measurements from tools/audit.js and tools/layout.js.
 outputs/
+# Everything written for an assistant rather than for the project: the running
+# notes in ai/NOTES.md, the standing instructions in ai/README.md, task handoffs,
+# and whatever throwaway probes a session leaves behind. None of it is reviewed,
+# none of it should be, and it carries absolute paths and dates from whichever
+# machine it was written on.
+#
+# What belongs in the repository instead: anything true about the *extension*
+# rather than about the work of changing it. Put that in a comment beside the code,
+# or in README.md if a user needs it.
+ai/
+
+# Local editor/assistant launch config.
+.claude/

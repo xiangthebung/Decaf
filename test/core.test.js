@@ -23,6 +23,8 @@ test("routes separate endless feeds from things opened on purpose", () => {
     ["https://www.youtube.com/shorts/aBcD1", "feed"],
     ["https://www.youtube.com/feed/trending", "feed"],
     ["https://www.youtube.com/watch?v=aBcD1", "media"],
+    // A watch page is its `v`. Bare /watch is YouTube's own error page.
+    ["https://www.youtube.com/watch", "content"],
     ["https://www.youtube.com/live/aBcD1", "media"],
     ["https://www.youtube.com/feed/subscriptions", "content"],
     ["https://www.youtube.com/results?search_query=cats", "content"],
@@ -30,6 +32,10 @@ test("routes separate endless feeds from things opened on purpose", () => {
     ["https://www.instagram.com/reels/", "feed"],
     ["https://www.instagram.com/explore/", "feed"],
     ["https://www.instagram.com/explore/search/keyword/?q=a", "content"],
+    // A hashtag and a location are things a person asked for by name.
+    ["https://www.instagram.com/explore/tags/cats/", "content"],
+    ["https://www.instagram.com/explore/locations/213/new-york/", "content"],
+    ["https://www.instagram.com/explore/people/", "feed"],
     ["https://www.instagram.com/reel/Cx123/", "media"],
     ["https://www.instagram.com/p/Cx123/", "media"],
     ["https://www.instagram.com/direct/inbox/", "content"],
@@ -43,19 +49,38 @@ test("routes separate endless feeds from things opened on purpose", () => {
     ["https://x.com/someone", "content"],
     ["https://x.com/someone/status/123", "media"],
     ["https://x.com/messages", "content"],
+    // A list you curated is still a timeline that does not end.
+    ["https://x.com/i/lists/12345", "feed"],
+    ["https://x.com/i/communities/999", "feed"],
     ["https://www.reddit.com/", "feed"],
     ["https://www.reddit.com/r/popular/", "feed"],
-    ["https://www.reddit.com/r/webdev/", "content"],
+    // A subreddit front page is /r/all with a narrower source. The thread under a
+    // post is not, and `isMedia` still wins there.
+    ["https://www.reddit.com/r/webdev/", "feed"],
+    ["https://www.reddit.com/r/webdev/top/", "feed"],
+    ["https://www.reddit.com/user/someone/", "feed"],
+    ["https://www.reddit.com/user/someone/m/mymulti/", "feed"],
     ["https://www.reddit.com/r/webdev/comments/abc/title/", "media"],
+    ["https://www.reddit.com/settings/", "content"],
     ["https://www.facebook.com/", "feed"],
     ["https://www.facebook.com/watch", "feed"],
-    ["https://www.facebook.com/reel/123", "feed"],
+    // The permalink every shared Facebook video lands on.
+    ["https://www.facebook.com/watch/?v=123456", "media"],
+    ["https://www.facebook.com/watch?v=123456", "media"],
+    ["https://www.facebook.com/reels/", "feed"],
+    // One reel someone sent you, matching how Instagram's /reel/<id> is read.
+    ["https://www.facebook.com/reel/123", "media"],
+    ["https://www.facebook.com/marketplace/", "feed"],
+    ["https://www.facebook.com/groups/feed/", "feed"],
     ["https://www.facebook.com/messages/t/", "content"],
     ["https://www.facebook.com/someone/videos/123", "media"],
     ["https://www.threads.com/", "feed"],
     ["https://www.threads.com/@someone/post/abc", "media"],
     ["https://bsky.app/", "feed"],
+    // Custom feeds are where Bluesky's algorithm actually lives.
+    ["https://bsky.app/profile/a.bsky.social/feed/whats-hot", "feed"],
     ["https://bsky.app/profile/a.bsky.social/post/xyz", "media"],
+    ["https://bsky.app/profile/a.bsky.social", "content"],
     ["https://bsky.app/messages", "content"],
     ["https://www.twitch.tv/", "feed"],
     ["https://www.twitch.tv/directory/game/Chess", "feed"],
@@ -63,6 +88,10 @@ test("routes separate endless feeds from things opened on purpose", () => {
     ["https://www.twitch.tv/somestreamer", "media"],
     ["https://www.twitch.tv/videos/98765", "media"],
     ["https://www.twitch.tv/settings", "content"],
+    // Application paths, not channels. Missing names here read as media.
+    ["https://www.twitch.tv/login", "content"],
+    ["https://www.twitch.tv/dashboard", "content"],
+    ["https://www.twitch.tv/signup", "content"],
     ["https://www.pinterest.com/", "feed"],
     ["https://www.pinterest.com/today/", "feed"],
     ["https://www.pinterest.ca/pin/9911/", "media"],
@@ -76,6 +105,9 @@ test("routes separate endless feeds from things opened on purpose", () => {
     // The page the launch page frames, which is also reachable on its own.
     ["https://www.linkedin.com/games/view/queens/desktop/", "game"],
     ["https://news.google.com/topstories", "feed"],
+    // Every topic chip in Google News' own navigation points here.
+    ["https://news.google.com/topics/CAAqBwgKMKTsCgw", "feed"],
+    ["https://news.google.com/stories/CAAqNggK", "feed"],
     ["https://news.google.com/articles/xyz", "media"],
     ["https://news.google.com/search?q=a", "content"],
     ["https://example.com/", ""]
@@ -89,6 +121,45 @@ test("double slashes and query strings do not confuse routing", () => {
   assert.equal(D.getRoute("https://www.youtube.com//"), "feed");
   assert.equal(D.getRoute("https://www.youtube.com/?gl=CA"), "feed");
   assert.equal(D.getRoute("https://www.youtube.com/watch?v=a&t=10"), "media");
+});
+
+/**
+ * A page key answers "is this still the same page?", which is not the same
+ * question as "is this the same URL?". Sites rewrite their own URL while a person
+ * sits still on one page, and anything granted for that page has to survive it.
+ */
+test("a site rewriting its own URL is still the same page", () => {
+  const same = (a, b) => assert.equal(D.getPageKey(a), D.getPageKey(b), `${a} vs ${b}`);
+  const differs = (a, b) => assert.notEqual(D.getPageKey(a), D.getPageKey(b), `${a} vs ${b}`);
+
+  const watch = "https://www.youtube.com/watch?v=aBcD1";
+  // YouTube drops the share token a second after a shared link opens, writes the
+  // playhead into `t`, and adds a playlist without changing what is playing.
+  same(watch, "https://www.youtube.com/watch?v=aBcD1&si=share-token");
+  same(watch, "https://www.youtube.com/watch?v=aBcD1&t=42s");
+  same(watch, "https://www.youtube.com/watch?v=aBcD1&list=PL1&index=3");
+  same(watch, "https://www.youtube.com/watch/?v=aBcD1");
+  same(watch, "https://www.youtube.com/watch?v=aBcD1#comments");
+  // The video itself is the one query param that says which page this is.
+  differs(watch, "https://www.youtube.com/watch?v=other");
+
+  // Instagram counts carousel slides in the query.
+  same("https://www.instagram.com/p/Abc123/", "https://www.instagram.com/p/Abc123/?img_index=3");
+  differs("https://www.instagram.com/p/Abc123/", "https://www.instagram.com/p/Xyz789/");
+
+  // Facebook serves every video from one path, so its ids count too.
+  differs("https://www.facebook.com/watch/?v=1", "https://www.facebook.com/watch/?v=2");
+  same("https://www.facebook.com/watch/?v=1", "https://www.facebook.com/watch/?v=1&ref=sharing");
+
+  // Tracking params a share link carries are never part of the answer.
+  same(
+    "https://www.reddit.com/r/x/comments/abc/title/",
+    "https://www.reddit.com/r/x/comments/abc/title/?utm_source=share&utm_medium=web"
+  );
+
+  differs("https://www.youtube.com/", watch);
+  assert.equal(D.getPageKey("https://example.com/"), "", "an unsupported page has no key");
+  assert.equal(D.getPageKey("not a url"), "");
 });
 
 test("every site describes what it pauses and where the feed lives", () => {
@@ -127,8 +198,9 @@ test("settings normalize anything found in storage", () => {
     sites: { youtube: 0, nonsense: true },
     lockUntil: "not a number",
     passes: { youtube: 1 },
-    passCounts: { youtube: 3 },
-    passDay: "1999-01-01",
+    passHistory: { "1999-01-01": { youtube: 3 }, "not-a-day": { reddit: 1 } },
+    snoozes: { youtube: 1 },
+    custom: { "NOT A HOST": {}, "youtube.com": {}, "news.ycombinator.com": { label: "  HN  " } },
     strayKey: "ignored"
   });
   assert.equal(merged.enabled, false);
@@ -142,9 +214,99 @@ test("settings normalize anything found in storage", () => {
   assert.equal(Object.hasOwn(merged, "strayKey"), false);
   assert.equal(merged.lockUntil, 0);
   assert.deepEqual(merged.passes, {}, "expired passes are dropped");
-  assert.deepEqual(merged.passCounts, {}, "yesterday's counts are dropped");
-  assert.equal(merged.passDay, "");
+  assert.deepEqual(merged.snoozes, {}, "expired snoozes are dropped");
+  assert.deepEqual(merged.passHistory, {}, "stale and malformed days are dropped");
+  assert.deepEqual(
+    Object.keys(merged.custom),
+    ["news.ycombinator.com"],
+    "a bad host, and one Decaf already covers, are both refused"
+  );
+  assert.equal(merged.custom["news.ycombinator.com"].label, "HN");
   assert.deepEqual(Object.keys(D.mergeSettings({})).sort(), Object.keys(D.DEFAULT_SETTINGS).sort());
+});
+
+/**
+ * Storage written before pass history existed kept one day of counts in two flat
+ * keys. Someone updating mid-day should not have their hold escalation handed
+ * back to three seconds.
+ */
+test("a day of counts written by an older version is carried forward", () => {
+  const now = Date.UTC(2026, 6, 28, 12, 0, 0);
+  const today = D.dayKey(new Date(now));
+  const merged = D.mergeSettings({ passDay: today, passCounts: { youtube: 2 } }, now);
+  assert.equal(D.passCount(merged, "youtube", now), 2);
+  assert.equal(D.holdSeconds(D.passCount(merged, "youtube", now)), 11);
+  // Yesterday's still goes.
+  const stale = D.mergeSettings({ passDay: "1999-01-01", passCounts: { youtube: 2 } }, now);
+  assert.equal(D.passCount(stale, "youtube", now), 0);
+});
+
+test("pass history keeps a fortnight and no more", () => {
+  const now = Date.UTC(2026, 6, 28, 12, 0, 0);
+  const day = (offset) => D.dayKey(new Date(now - offset * 86400000));
+  const raw = { passHistory: {} };
+  for (let offset = 0; offset < 30; offset += 1) raw.passHistory[day(offset)] = { youtube: 1 };
+  const merged = D.mergeSettings(raw, now);
+  assert.equal(Object.keys(merged.passHistory).length, D.PASS_HISTORY_DAYS);
+  assert.equal(Object.hasOwn(merged.passHistory, day(0)), true);
+  assert.equal(Object.hasOwn(merged.passHistory, day(D.PASS_HISTORY_DAYS)), false);
+
+  const totals = D.passTotals(merged, now);
+  assert.equal(totals.today, 1);
+  assert.equal(totals.week, 7, "a week is today plus the six before it");
+  assert.equal(totals.busiest, "youtube");
+});
+
+test("a snooze sets a site aside and gives it back on its own", () => {
+  const now = Date.UTC(2026, 6, 28, 12, 0, 0);
+  const base = D.mergeSettings({}, now);
+  assert.equal(D.isActiveForSite(base, "youtube", now), true);
+
+  const snoozed = D.snoozeSite(base, "youtube", 30, now);
+  assert.equal(D.isActiveForSite(snoozed, "youtube", now), false);
+  assert.equal(D.isActiveForSite(snoozed, "reddit", now), true, "one site only");
+  assert.equal(D.shouldPauseFeed(snoozed, "youtube", "feed", now), false);
+  assert.equal(D.snoozeUntil(snoozed, "youtube", now), now + 30 * 60000);
+
+  // It ends by itself, with nothing having to run.
+  assert.equal(D.isActiveForSite(snoozed, "youtube", now + 31 * 60000), true);
+  assert.equal(D.isSnoozed(snoozed, "youtube", now + 31 * 60000), false);
+
+  const woken = D.wakeSite(snoozed, "youtube", now);
+  assert.equal(D.isActiveForSite(woken, "youtube", now), true);
+
+  // Nothing may hold a site aside for a day; that is a decision, not a pause.
+  const overlong = D.mergeSettings({ snoozes: { youtube: now + 86400000 * 5 } }, now);
+  assert.equal(D.snoozeUntil(overlong, "youtube", now) <= now + 8 * 3600000, true);
+});
+
+test("a site the person added gets the general treatment", () => {
+  const now = Date.UTC(2026, 6, 28, 12, 0, 0);
+  const added = D.addCustomSite(D.mergeSettings({}, now), "news.ycombinator.com", "", now);
+  const key = D.customKey("news.ycombinator.com");
+  assert.equal(D.getSite("https://news.ycombinator.com/", added), key);
+  assert.equal(D.getSite("https://www.news.ycombinator.com/", added), key, "www finds the bare entry");
+  assert.equal(D.getSite("https://news.ycombinator.com/", null), null, "custom sites need settings to be found");
+  assert.equal(D.isCustomKey(key), true);
+  assert.equal(D.customHost(key), "news.ycombinator.com");
+  assert.equal(D.siteLabel(key, added), "news.ycombinator.com");
+  // The front page is the feed; anything navigated to is not. There is no table
+  // for these, so nothing stronger can be claimed.
+  assert.equal(D.getRoute("https://news.ycombinator.com/", added), "feed");
+  assert.equal(D.getRoute("https://news.ycombinator.com/item?id=1", added), "content");
+  assert.deepEqual(D.feedSelectors(key), [], "no selectors: the shape finder is the whole of it");
+  assert.equal(D.isActiveForSite(added, key, now), true);
+  assert.equal(D.siteKeys(added).includes(key), true);
+
+  const granted = D.grantPass(added, key, now);
+  assert.equal(D.passCount(granted, key, now), 1, "a custom site earns passes like any other");
+
+  const removed = D.removeCustomSite(added, "news.ycombinator.com", now);
+  assert.equal(D.getSite("https://news.ycombinator.com/", removed), null);
+
+  // A site Decaf already covers cannot be shadowed by a custom entry.
+  const shadow = D.addCustomSite(D.mergeSettings({}, now), "youtube.com", "", now);
+  assert.deepEqual(shadow.custom, {});
 });
 
 test("a running lock always implies Decaf is on", () => {

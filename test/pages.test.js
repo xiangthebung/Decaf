@@ -27,9 +27,17 @@ test("the popup shows what Decaf is doing on this page", async () => {
     assert.equal(page.$("lock-button").textContent, "Lock");
     assert.deepEqual(
       Array.from(page.$("lock-choices").children, (button) => button.textContent),
-      ["1 day", "1 week", "30 days"]
+      ["1 hour", "4 hours", "1 day", "1 week", "30 days"]
     );
     assert.equal(page.$("lock-choices").children[0].getAttribute("aria-checked"), "true");
+    // The role has to be on the attribute, not a JS property: reflection for
+    // `element.role` only arrived in Chrome 119 and the floor here is 105.
+    assert.equal(page.$("lock-choices").children[0].getAttribute("role"), "radio");
+    assert.equal(
+      Array.from(page.$("lock-choices").children).filter((button) => button.tabIndex === 0).length,
+      1,
+      "a radiogroup has exactly one tab stop"
+    );
   } finally {
     page.close();
   }
@@ -95,12 +103,17 @@ test("locking takes two deliberate steps and records a baseline", async () => {
     click(page.$("lock-button"));
     await settle();
     assert.equal(page.$("lock-button").textContent, "Confirm lock");
-    assert.match(page.$("lock-detail").textContent, /Lock Decaf for 1 day\?/);
+    assert.match(page.$("lock-detail").textContent, /Lock Decaf for 1 hour\?/);
+    assert.match(page.$("lock-detail").textContent, /cannot be shortened or cancelled/);
     assert.equal(page.chrome.__store.lockUntil, undefined);
+    // The confirm step says what is about to be frozen, not just for how long.
+    assert.match(page.$("lock-summary").textContent, /Decaf stays on/);
+    assert.match(page.$("lock-summary").textContent, /12 of 12 sites/);
+    assert.match(page.$("lock-summary").textContent, /4 seconds/);
 
-    click(page.$("lock-choices").children[1]);
+    click(page.$("lock-choices").children[3]);
     await settle();
-    assert.equal(page.$("lock-choices").children[1].getAttribute("aria-checked"), "true");
+    assert.equal(page.$("lock-choices").children[3].getAttribute("aria-checked"), "true");
     assert.equal(page.$("lock-button").textContent, "Lock", "changing the duration starts over");
 
     click(page.$("lock-button"));
@@ -114,7 +127,7 @@ test("locking takes two deliberate steps and records a baseline", async () => {
     assert.ok(Math.abs(store.lockUntil - expected) < 5000, "locked for the chosen week");
     assert.ok(store.lockBaseline, "a baseline is stored so the lock can be enforced");
     assert.equal(store.lockBaseline.pauseFeeds, true);
-    assert.equal(page.$("master").disabled, true);
+    assert.equal(page.$("master").getAttribute("aria-disabled"), "true");
     assert.equal(page.$("master-state").textContent, "Locked");
     assert.equal(page.$("lock-choices").hidden, true);
     assert.match(page.$("lock-title").textContent, /^Locked · 7 days left$/);
@@ -142,7 +155,7 @@ test("a running lock refuses to be switched off", async () => {
 test("an open feed can be handed back early", async () => {
   const page = await launchExtensionPage("popup.html", {
     tabUrl: "https://www.youtube.com/",
-    storage: { passes: { youtube: Date.now() + 120_000 }, passDay: today(), passCounts: { youtube: 1 } }
+    storage: { passes: { youtube: Date.now() + 120_000 }, passHistory: { [today()]: { youtube: 1 } } }
   });
   try {
     assert.equal(page.$("site-badge").textContent, "Feed open");
@@ -225,13 +238,13 @@ test("settings apply the moment they change", async () => {
 test("a running lock keeps settings from being weakened", async () => {
   const page = await launchExtensionPage("options.html", { storage: { lockUntil: Date.now() + 7200000 } });
   try {
-    assert.equal(page.$("master").disabled, true);
-    assert.equal(switchFor(page, "pauseFeeds").disabled, true);
-    assert.equal(switchFor(page, "hideComments").disabled, true);
-    assert.equal(switchFor(page, "upsideDown").disabled, false, "friction can still be added");
+    assert.equal(page.$("master").getAttribute("aria-disabled"), "true");
+    assert.equal(switchFor(page, "pauseFeeds").getAttribute("aria-disabled"), "true");
+    assert.equal(switchFor(page, "hideComments").getAttribute("aria-disabled"), "true");
+    assert.equal(switchFor(page, "upsideDown").getAttribute("aria-disabled"), "false", "friction can still be added");
     assert.match(page.$("lock-badge").textContent, /2 hr left$/);
     for (const key of page.decaf.SITE_KEYS) {
-      assert.equal(siteSwitch(page, key).disabled, true, key);
+      assert.equal(siteSwitch(page, key).getAttribute("aria-disabled"), "true", key);
     }
 
     // Even if a disabled control is forced, the write is refused.
@@ -256,7 +269,7 @@ test("a lock still allows adding sites and friction", async () => {
   });
   try {
     const site = siteSwitch(page, "pinterest");
-    assert.equal(site.disabled, false, "a site that is off can still be added");
+    assert.equal(site.getAttribute("aria-disabled"), "false", "a site that is off can still be added");
     toggle(site, true);
     await settle();
     assert.equal(page.chrome.__store.sites.pinterest, true);

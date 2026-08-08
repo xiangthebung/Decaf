@@ -27,22 +27,24 @@ On every site it covers:
 - Images and video are grayscale, including the video you opened on purpose. One tap on the page gives that page its colour back until you leave it, and the next page asks again.
 - Recommendation rails and notification badges are removed.
 
-When you do want the feed, hold the button on the notice. The first pass of the day takes three seconds and gives you five minutes; the next takes seven, then eleven, then fifteen. Nothing is hidden behind a countdown you cannot skip — the wait is the whole mechanism, and it is short.
+When you do want the feed, hold the button on the notice. The first pass of the day takes three seconds and gives you five minutes; the next takes seven, then eleven, then fifteen. While a pass runs, a small counter in the corner shows what is left and offers to pause the feed again early. Nothing is hidden behind a countdown you cannot skip — the wait is the whole mechanism, and it is short.
 
-Lock holds every Decaf setting in place for one day, one week or thirty days, and adds four seconds to every hold while it runs. It is there for the moment you know you are about to talk yourself out of it.
+Lock holds every Decaf setting in place for one hour, four hours, one day, one week or thirty days, and adds four seconds to every hold while it runs. An hour of it is a focus session that never freezes you: the feed is still seven seconds away, it just costs more, and no switch can be flipped to get out of it.
 
-Each of the twelve site families is a separate switch, and so is each of the individual changes, so you can leave the counts on YouTube and take the feed off Reddit if that is the shape of the problem.
+Each of the twelve sites has its own switch, and can also be set aside for thirty minutes or two hours when you genuinely need it to behave normally. The four behaviours — pause feeds, hide comments and replies, turn media upside down, hide notification counts — are switched on or off across all of them at once. Grayscale and reward-count masking are always on wherever Decaf is on.
 
-Sites covered: YouTube, Instagram, TikTok, X (Twitter), Reddit, Facebook, Threads, Bluesky, Twitch, Pinterest, LinkedIn and Google News.
+Sites covered: YouTube, Instagram, TikTok, X (Twitter), Reddit, Facebook, Threads, Bluesky, Twitch, Pinterest, LinkedIn and Google News — plus any site you add yourself, which gets the treatment that needs no per-site rules.
 
 Decaf is free, has no accounts, and makes no network requests of its own. Your settings are stored on this device.
 
 ## Permission justifications
 
-- **storage**: Keeps your settings on this device — which sites are on, which individual changes are on, when a five-minute pass expires and when a Lock ends. Nothing is sent anywhere.
-- **activeTab**: The popup shows a switch for the site in the tab you are looking at, which means it has to read that tab's address. It reads the address only while the popup is open, and only for the tab you opened it from.
-- **alarms**: A Lock has to end at the time it was set to end. The service worker is stopped and restarted constantly by Chrome, so an alarm is the only thing that survives long enough to release a thirty-day Lock. It is also how a five-minute pass expires without polling.
-- **Site access (the twelve listed sites only)**: The content script is declared for the sites Decaf changes and nowhere else. There is no `host_permissions` entry and no all-sites access; on any other website Decaf does not run at all.
+- **storage**: Keeps your settings on this device — which sites are on, which behaviours are on, when a five-minute pass expires, when a Lock ends, and a count of how many passes were taken per site per day for the last fortnight. Nothing is sent anywhere.
+- **activeTab**: The popup shows a switch for the site in the tab you are looking at, which means it has to read that tab's address, and it asks that tab whether the feed it is reporting on was actually found. Both happen only while the popup is open, and only for the tab you opened it from.
+- **alarms**: A Lock has to end at the time it was set to end. The service worker is stopped and restarted constantly by Chrome, so an alarm is the only thing that survives long enough to release a thirty-day Lock.
+- **scripting**: When Decaf is installed or updated, Chrome leaves every tab that is already open without a content script until its next navigation — so the extension is running correctly and looks completely broken in the tab that prompted the install. This is used once per install and once per update, to put Decaf into those already-open tabs, and to register a content script for any site the user adds themselves.
+- **Site access (the twelve listed sites only)**: The content script is declared for the sites Decaf changes and nowhere else. `host_permissions` names exactly the same hosts — content-script matches do not grant host access to `scripting`, so without it the install case above cannot be fixed. On any other website Decaf does not run at all.
+- **Optional site access (all sites, never granted by default)**: A person can add a site of their own from the settings page. Chrome asks them for that one origin at that moment; nothing is requested at install time, and refusing it simply means the site is not added.
 
 Note for the reviewer, if asked: Decaf runs at `document_start` so that the feed is gone before it paints. A script that waited for `DOMContentLoaded` would show the feed first and then remove it, which is worse than not running.
 

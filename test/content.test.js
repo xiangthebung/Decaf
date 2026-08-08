@@ -3,7 +3,7 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { launchPage, settle, wait, until } = require("../tools/harness.js");
+const { launchPage, settle, wait, until, asUserEvent, activate, scriptedClick } = require("../tools/harness.js");
 const { SITE_FIXTURES, pageFor } = require("../tools/site-fixtures.js");
 const D = require("../core.js");
 
@@ -234,7 +234,7 @@ test("a feed that has outgrown every selector is still found by shape", async ()
     // Opening the feed must give it back.
     page.decaf.holdSeconds = () => 0.02;
     notice(page).querySelector(".decaf-notice-hold")
-      .dispatchEvent(new page.window.MouseEvent("pointerdown", { bubbles: true }));
+      .dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerdown", { bubbles: true })));
     await until(() => !notice(page));
     assert.equal(container.classList.contains("decaf-feed-container"), false, "the mark is removed with the notice");
   } finally {
@@ -317,7 +317,7 @@ test("holding the button opens the feed for five minutes", async () => {
   try {
     page.decaf.holdSeconds = () => 0.02;
     const button = notice(page).querySelector(".decaf-notice-hold");
-    button.dispatchEvent(new page.window.MouseEvent("pointerdown", { bubbles: true }));
+    button.dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerdown", { bubbles: true })));
     assert.equal(button.dataset.holding, "true");
     assert.equal(button.querySelector(".decaf-notice-label").textContent, "Keep holding…");
     await until(() => !notice(page));
@@ -325,7 +325,7 @@ test("holding the button opens the feed for five minutes", async () => {
     const store = page.chrome.__store;
     assert.ok(store.passes.youtube > Date.now(), "a pass is stored");
     assert.ok(store.passes.youtube <= Date.now() + 5 * 60 * 1000);
-    assert.equal(store.passCounts.youtube, 1);
+    assert.equal(store.passHistory[D.dayKey()].youtube, 1);
     assert.equal(page.state().hidingFeed, false);
     assert.equal(rootClasses(page).includes("decaf-hide-feed"), false);
     assert.match(page.api.chip().textContent, /Feed open for 5 minutes/);
@@ -338,10 +338,10 @@ test("the hold animation is driven by a class, never by injected CSS", async () 
   const page = await launchPage({ url: FEED_URL, html: YOUTUBE_HOME });
   try {
     const button = notice(page).querySelector(".decaf-notice-hold");
-    button.dispatchEvent(new page.window.MouseEvent("pointerdown", { bubbles: true }));
+    button.dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerdown", { bubbles: true })));
     assert.ok(button.classList.contains("decaf-hold-3"), "3 second hold uses the 3 second class");
     assert.equal(button.getAttribute("style"), null, "no inline styles to be blocked by a page CSP");
-    button.dispatchEvent(new page.window.MouseEvent("pointerup", { bubbles: true }));
+    button.dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerup", { bubbles: true })));
     assert.equal(button.classList.contains("decaf-hold-3"), false);
   } finally {
     page.close();
@@ -353,9 +353,9 @@ test("letting go early keeps the feed paused", async () => {
   try {
     page.decaf.holdSeconds = () => 0.4;
     const button = notice(page).querySelector(".decaf-notice-hold");
-    button.dispatchEvent(new page.window.MouseEvent("pointerdown", { bubbles: true }));
+    button.dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerdown", { bubbles: true })));
     await wait(60);
-    button.dispatchEvent(new page.window.MouseEvent("pointerup", { bubbles: true }));
+    button.dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerup", { bubbles: true })));
     await wait(500);
     assert.ok(notice(page), "the feed is still paused");
     assert.equal(page.chrome.__store.passes, undefined);
@@ -369,7 +369,7 @@ test("the second pass of the day takes longer to earn", async () => {
   const page = await launchPage({
     url: FEED_URL,
     html: YOUTUBE_HOME,
-    storage: { passDay: today(), passCounts: { youtube: 1 } }
+    storage: { passHistory: { [today()]: { youtube: 1 } } }
   });
   try {
     assert.equal(notice(page).querySelector(".decaf-notice-hint").textContent, "Hold for 7 seconds · 2nd time today");
@@ -400,7 +400,7 @@ test("nothing plays behind a paused feed", async () => {
     const video = page.document.getElementById("feed-video");
     let stopped = false;
     video.pause = () => { stopped = true; };
-    video.dispatchEvent(new page.window.Event("play", { bubbles: true }));
+    video.dispatchEvent(asUserEvent(new page.window.Event("play", { bubbles: true })));
     assert.equal(stopped, true);
   } finally {
     page.close();
@@ -436,12 +436,12 @@ test("back and forward navigation is followed too", async () => {
   const page = await launchPage({ url: FEED_URL, html: YOUTUBE_HOME });
   try {
     page.window.history.pushState({}, "", "/watch?v=aBcD1");
-    page.window.dispatchEvent(new page.window.Event("popstate"));
+    page.window.dispatchEvent(asUserEvent(new page.window.Event("popstate")));
     await settle();
     assert.equal(notice(page), null);
 
     page.window.history.pushState({}, "", "/");
-    page.window.dispatchEvent(new page.window.Event("popstate"));
+    page.window.dispatchEvent(asUserEvent(new page.window.Event("popstate")));
     await settle();
     assert.ok(notice(page));
   } finally {
@@ -457,14 +457,51 @@ test("full color can be granted for one page at a time", async () => {
     assert.equal(pill.textContent, "Show in color");
     assert.equal(rootClasses(page).includes("decaf-color"), false);
 
-    pill.dispatchEvent(new page.window.MouseEvent("click", { bubbles: true }));
+    pill.dispatchEvent(asUserEvent(new page.window.MouseEvent("click", { bubbles: true })));
     await settle();
     assert.ok(rootClasses(page).includes("decaf-color"));
     assert.equal(page.api.pill().isConnected, false, "the offer goes away once taken");
 
     // Moving to the next video asks again.
     page.window.history.pushState({}, "", "/watch?v=other1");
-    page.window.dispatchEvent(new page.window.Event("popstate"));
+    page.window.dispatchEvent(asUserEvent(new page.window.Event("popstate")));
+    await settle();
+    assert.equal(rootClasses(page).includes("decaf-color"), false);
+    assert.equal(page.api.pill().isConnected, true);
+  } finally {
+    page.close();
+  }
+});
+
+/**
+ * The bug this covers: "Show in color" appeared not to work the first time you
+ * used it. It did work — and then the site quietly took it back. YouTube strips
+ * the `si` share token out of a shared link about a second after it opens, and
+ * Decaf read any change to `location.href` as a move to another page, so the
+ * grant was revoked and the offer came back while the person was still watching
+ * the video they had just asked to see in colour. Opening a shared link is the
+ * first thing most people do, which is why it looked like a first-time failure.
+ */
+test("color survives a site rewriting its own URL", async () => {
+  const page = await launchPage({ url: `${WATCH_URL}&si=share-token` });
+  try {
+    page.api.pill().dispatchEvent(asUserEvent(new page.window.MouseEvent("click", { bubbles: true })));
+    await settle();
+    assert.ok(rootClasses(page).includes("decaf-color"));
+
+    // YouTube cleaning up after itself, the playhead being written, an in-page
+    // anchor being followed: three URLs, one page.
+    for (const url of ["/watch?v=aBcD1", "/watch?v=aBcD1&t=42s", "/watch?v=aBcD1#comments"]) {
+      page.window.history.replaceState({}, "", url);
+      page.api.onLocationChange();
+      await settle();
+      assert.ok(rootClasses(page).includes("decaf-color"), `color was taken back by ${url}`);
+      assert.equal(page.api.pill()?.isConnected, false, `the offer came back on ${url}`);
+    }
+
+    // A different video is a different page, and it asks again.
+    page.window.history.pushState({}, "", "/watch?v=second");
+    page.api.onLocationChange();
     await settle();
     assert.equal(rootClasses(page).includes("decaf-color"), false);
     assert.equal(page.api.pill().isConnected, true);
@@ -706,7 +743,7 @@ test("Decaf never masks its own words", async () => {
   const page = await launchPage({
     url: FEED_URL,
     html: YOUTUBE_HOME,
-    storage: { passDay: today(), passCounts: { youtube: 2 } }
+    storage: { passHistory: { [today()]: { youtube: 2 } } }
   });
   try {
     page.api.runScan();
@@ -757,17 +794,17 @@ test("muted autoplay is stopped, deliberate playback is not", async () => {
     };
 
     const silent = make(true);
-    silent.video.dispatchEvent(new page.window.Event("play", { bubbles: true }));
+    silent.video.dispatchEvent(asUserEvent(new page.window.Event("play", { bubbles: true })));
     assert.equal(silent.stopped, true, "a muted feed video is stopped");
     assert.equal(silent.video.hasAttribute("autoplay"), false);
 
     const audible = make(false);
-    audible.video.dispatchEvent(new page.window.Event("play", { bubbles: true }));
+    audible.video.dispatchEvent(asUserEvent(new page.window.Event("play", { bubbles: true })));
     assert.equal(audible.stopped, false, "audible playback is intentional");
 
     const afterClick = make(true);
-    page.document.dispatchEvent(new page.window.MouseEvent("pointerdown", { bubbles: true }));
-    afterClick.video.dispatchEvent(new page.window.Event("play", { bubbles: true }));
+    page.document.dispatchEvent(asUserEvent(new page.window.MouseEvent("pointerdown", { bubbles: true })));
+    afterClick.video.dispatchEvent(asUserEvent(new page.window.Event("play", { bubbles: true })));
     assert.equal(afterClick.stopped, false, "playback right after a click is intentional");
   } finally {
     page.close();
@@ -782,7 +819,7 @@ test("the player on a media route is left to play", async () => {
     let stopped = false;
     video.pause = () => { stopped = true; };
     page.document.body.append(video);
-    video.dispatchEvent(new page.window.Event("play", { bubbles: true }));
+    video.dispatchEvent(asUserEvent(new page.window.Event("play", { bubbles: true })));
     assert.equal(stopped, false);
   } finally {
     page.close();
@@ -818,7 +855,7 @@ test("leaving the page removes every trace of Decaf", async () => {
   const page = await launchPage({ url: FEED_URL, html: YOUTUBE_HOME });
   try {
     page.api.runScan();
-    page.window.dispatchEvent(new page.window.Event("pagehide"));
+    page.window.dispatchEvent(asUserEvent(new page.window.Event("pagehide")));
     await settle();
     assert.deepEqual(rootClasses(page), []);
     assert.equal(notice(page), null);

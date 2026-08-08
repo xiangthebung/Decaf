@@ -315,7 +315,7 @@ function assertInvariants(shot, settings = current, options = {}) {
   assert.ok(!(active && /^\s*\(\d/.test(shot.title)), `title still carries a count on ${where}: ${shot.title}`);
 }
 
-const GRAY = "grayscale(1) contrast(0.96)";
+const GRAY = "grayscale(1)";
 const UPSIDE_DOWN = "matrix(-1, 0, 0, -1, 0, 0)";
 
 /* =========================================================== the sections = */
@@ -807,18 +807,31 @@ sections.options = async () => {
       null, { timeout: 6000 });
     });
 
-    await check("the lock choices are the three durations, and picking one is remembered", async () => {
+    await check("the lock choices are every duration, and picking one is remembered", async () => {
       const labels = await page.locator("#lock-choices button").evaluateAll((list) =>
-        list.map((b) => [b.textContent, Number(b.dataset.hours), b.getAttribute("aria-checked")]));
+        list.map((b) => [b.textContent, Number(b.dataset.value), b.getAttribute("aria-checked")]));
       assert.deepEqual(labels.map(([text, hours]) => ({ label: text, hours })),
         D.LOCK_DURATIONS.map(({ label, hours }) => ({ label, hours })));
-      assert.deepEqual(labels.map(([, , checked]) => checked), ["true", "false", "false"],
-        "one day is the default choice");
-      await page.locator('#lock-choices button[data-hours="168"]').click();
+      assert.deepEqual(
+        labels.map(([, , checked]) => checked),
+        D.LOCK_DURATIONS.map(({ hours }) => String(hours === D.DEFAULT_LOCK_HOURS)),
+        "the cheapest commitment is the default choice");
+      // A radiogroup has exactly one tab stop, and the arrows move between its
+      // options. Three plain buttons in a row is not that.
+      assert.equal(
+        await page.locator("#lock-choices button").evaluateAll(
+          (list) => list.filter((b) => b.tabIndex === 0).length),
+        1,
+        "one tab stop");
+      assert.equal(
+        await page.locator("#lock-choices button").first().getAttribute("role"),
+        "radio",
+        "the role is on the attribute, not a JS property");
+      await page.locator('#lock-choices button[data-value="168"]').click();
       assert.deepEqual(
         await page.locator("#lock-choices button").evaluateAll((l) => l.map((b) => b.getAttribute("aria-checked"))),
-        ["false", "true", "false"]);
-      await page.locator('#lock-choices button[data-hours="24"]').click();
+        D.LOCK_DURATIONS.map(({ hours }) => String(hours === 168)));
+      await page.locator('#lock-choices button[data-value="24"]').click();
     });
 
     await check("locking takes two deliberate steps, and can be backed out of", async () => {
@@ -897,7 +910,7 @@ sections.popup = async () => {
       assert.equal(await page.locator("#unsupported").isVisible(), true);
       assert.equal(await page.locator("#site-card").isVisible(), false);
       assert.equal(await page.locator("#unsupported").innerText(),
-        "Decaf works on 12 feed-driven sites. Open one to see it here.");
+        "Decaf works on 12 feed-driven sites, plus any you add yourself. Open one to see it here.");
     } finally {
       await page.close();
     }
@@ -1056,8 +1069,8 @@ sections.hold = async () => {
 
       const stored = await readSettings();
       assert.ok(stored.passes.youtube > Date.now() + 4 * 60_000, "five minutes were granted");
-      assert.equal(stored.passCounts.youtube, 1, "and counted");
-      assert.equal(stored.passDay, D.dayKey(), "against today");
+      assert.equal(stored.passHistory[D.dayKey()].youtube, 1, "and counted");
+      assert.ok(stored.passHistory[D.dayKey()], "against today");
       return `ring at ${(progress * 100).toFixed(0)}%`;
     } finally {
       await page.close();
@@ -1066,7 +1079,7 @@ sections.hold = async () => {
 
   await check("the hold gets longer each time, and the page says so", async () => {
     for (const [count, seconds, ordinal] of [[0, 3, null], [1, 7, "2nd"], [2, 11, "3rd"], [3, 15, "4th"], [9, 15, "10th"]]) {
-      await setSettings(count ? { passDay: D.dayKey(), passCounts: { youtube: count } } : {});
+      await setSettings(count ? { passHistory: { [D.dayKey()]: { youtube: count } } } : {});
       const page = await open("youtube", "feed");
       try {
         const expected = ordinal ? `Hold for ${seconds} seconds · ${ordinal} time today` : `Hold for ${seconds} seconds`;
@@ -1169,7 +1182,12 @@ sections.lock = async () => {
     try {
       await page.goto(extensionPage("options.html"));
       await page.waitForSelector(".site");
+      // The default is now the cheapest commitment, so a day has to be chosen.
+      await page.locator('#lock-choices button[data-value="24"]').click();
       await page.locator("#lock-button").click();
+      // The confirm step lists what is about to be frozen, not just for how long.
+      assert.match(await page.locator("#lock-summary").innerText(), /12 of 12 sites/);
+      assert.match(await page.locator("#lock-summary").innerText(), /4 seconds longer/);
       await page.locator("#lock-button").click();
       await page.waitForFunction(() => document.getElementById("lock-button").hidden === true, null,
         { timeout: 6000 });
@@ -1182,10 +1200,10 @@ sections.lock = async () => {
       assert.equal(await page.locator("#lock-choices").isVisible(), false, "no more durations to pick");
 
       // What is on cannot be switched off; what is off can still be added.
-      assert.equal(await page.locator('input[data-setting="pauseFeeds"]').isDisabled(), true);
-      assert.equal(await page.locator('input[data-setting="hideComments"]').isDisabled(), true);
-      assert.equal(await page.locator('input[data-setting="upsideDown"]').isDisabled(), false);
-      assert.equal(await page.locator("#master").isDisabled(), true);
+      assert.equal(await page.locator('input[data-setting="pauseFeeds"]').getAttribute("aria-disabled"), "true");
+      assert.equal(await page.locator('input[data-setting="hideComments"]').getAttribute("aria-disabled"), "true");
+      assert.equal(await page.locator('input[data-setting="upsideDown"]').getAttribute("aria-disabled"), "false");
+      assert.equal(await page.locator("#master").getAttribute("aria-disabled"), "true");
       assert.equal(await page.locator("#master-state").innerText(), "Locked");
       for (const key of D.SITE_KEYS) {
         assert.equal(await page.locator(`.site[data-site="${key}"] input`).isDisabled(), true, key);
@@ -1241,9 +1259,7 @@ sections.lock = async () => {
       await page.waitForSelector(".site");
       // Reach past the disabled attribute the way a determined person would.
       await page.evaluate(() => {
-        const input = document.querySelector('input[data-setting="pauseFeeds"]');
-        input.disabled = false;
-        input.click();
+        document.querySelector('input[data-setting="pauseFeeds"]').click();
       });
       await page.waitForFunction(() => document.getElementById("toast").textContent !== "", null,
         { timeout: 6000 });
@@ -1271,13 +1287,11 @@ sections.lock = async () => {
       }, url("youtube", "/"));
       await page.goto(extensionPage("popup.html"));
       await page.waitForFunction(() => document.getElementById("master-state").textContent === "Locked");
-      assert.equal(await page.locator("#master").isDisabled(), true);
+      assert.equal(await page.locator("#master").getAttribute("aria-disabled"), "true");
       assert.equal(await page.locator("#lock-button").isVisible(), false);
       assert.match(await page.locator("#lock-title").innerText(), /^Locked · /);
       await page.evaluate(() => {
-        const master = document.getElementById("master");
-        master.disabled = false;
-        master.click();
+        document.getElementById("master").click();
       });
       await page.waitForFunction(() => document.getElementById("message").textContent !== "", null,
         { timeout: 6000 });
@@ -1300,7 +1314,7 @@ sections.lock = async () => {
       // The alarm the worker sets is what wakes it; nudge storage as a backstop
       // so this does not depend on alarm granularity.
       await new Promise((r) => setTimeout(r, 2000));
-      await control.evaluate(async () => chrome.storage.local.set({ passDay: "" }));
+      await control.evaluate(async () => chrome.storage.local.set({ passHistory: {} }));
       for (let attempt = 0; attempt < 40; attempt += 1) {
         const stored = await readSettings();
         if (!(D.LOCK_BASELINE_KEY in stored)) break;
@@ -1524,11 +1538,18 @@ sections.crawl = async () => {
     await setSettings();
     const page = await open("reddit", "feed");
     try {
+      // A subreddit front page is a feed of its own now, so following the
+      // sidebar link out of one paused feed lands on another paused feed — its
+      // posts are not there to be clicked, which is the entire point.
       await page.locator("#to-sub").click();
       await page.waitForLoadState("domcontentloaded");
       await settle(page);
-      assertInvariants(await snapshot(page), current);
-      await page.locator("#p1").click();
+      const sub = await snapshot(page);
+      assertInvariants(sub, current);
+      assert.equal(sub.notice, true, "a subreddit front page is paused too");
+      // The thread is reached the way a person actually reaches one from a
+      // paused world: a link from search, a share, the address bar.
+      await page.goto(url("reddit", "/r/fixit/comments/abc123/leaking_dishwasher/"));
       await page.waitForLoadState("domcontentloaded");
       await settle(page);
       assertInvariants(await snapshot(page), current);
@@ -1540,7 +1561,7 @@ sections.crawl = async () => {
       const shot = await snapshot(page);
       assertInvariants(shot, current);
       assert.equal(shot.notice, true, "back on the feed, still paused");
-      return "feed → r/fixit → thread → back → back";
+      return "feed → r/fixit (paused) → thread by address → back → back";
     } finally {
       await page.close();
     }

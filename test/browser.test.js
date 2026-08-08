@@ -253,9 +253,12 @@ test("Decaf works in a real Chromium", { skip: skipFixture }, async () => {
     await page.waitForSelector(".decaf-chip");
 
     // 5. Quiet visuals and quiet numbers, applied by the browser itself.
+    // Grayscale alone: the `contrast(0.96)` that used to ride along here applied
+    // to screenshots of text too, and pushed anything already near the line
+    // below 4.5:1.
     assert.equal(
       await page.evaluate(() => getComputedStyle(document.getElementById("photo")).filter),
-      "grayscale(1) contrast(0.96)"
+      "grayscale(1)"
     );
     await page.waitForFunction(() => document.getElementById("views")?.textContent === "— views");
     await page.waitForFunction(() => document.title === "Fixture");

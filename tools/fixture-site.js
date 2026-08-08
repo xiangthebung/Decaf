@@ -196,7 +196,9 @@ const SITES = {
     host: "www.reddit.com",
     feed: "/",
     media: "/r/fixit/comments/abc123/leaking_dishwasher/",
-    content: "/r/fixit/",
+    // A subreddit front page is an endless ranked list and is paused now, so
+    // `content` has to be somewhere a person navigated to that is not one.
+    content: "/settings/",
     render(pathname) {
       if (/\/comments\//.test(pathname)) {
         return page("Why is my dishwasher leaking? : r/fixit", `
@@ -622,7 +624,8 @@ const SITES = {
     host: "www.facebook.com",
     feed: "/",
     media: "/natgeo/posts/12345",
-    content: "/marketplace/",
+    // Marketplace is an endless scroll and is paused now.
+    content: "/messages/t/",
     render(pathname) {
       if (/\/posts\//.test(pathname)) {
         return page("A post | Facebook", `
@@ -639,11 +642,14 @@ const SITES = {
           </div>`);
       }
       if (pathname.startsWith("/marketplace")) {
+        // Marketplace is a paused surface now, and the real one puts its
+        // endless grid inside role="main" — the container the pause empties.
         return page("Marketplace | Facebook", `
           ${HEADER("facebook")}
-          <div id="mount"><main><h1>Marketplace</h1>
-            <a class="item" href="/natgeo/posts/12345">A post</a>
-            <a class="item" href="/">Home</a>
+          <div id="mount"><main role="main"><h1>Marketplace</h1>
+            <div role="article" class="item"><a href="/natgeo/posts/12345">A listing</a></div>
+            <div role="article" class="item"><a href="/natgeo/posts/22222">Another listing</a></div>
+            <div role="article" class="item"><a href="/natgeo/posts/33333">A third listing</a></div>
             ${COUNTS}
           </main></div>`);
       }

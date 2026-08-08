@@ -11,16 +11,19 @@ Everything Decaf keeps lives in `chrome.storage.local` on the device you are usi
 What is in there:
 
 - your four switches — pause feeds, hide comments and replies, turn media upside down, hide notification counts
-- which of the twelve supported sites Decaf is switched on for
+- which of the twelve supported sites Decaf is switched on for, and any site you added yourself: its address and the name you gave it
+- a site you have set aside for half an hour or two hours, and when that ends
 - an active Lock, if you set one, and when it ends
-- **how many five-minute passes you have taken today, counted per site.** This is the only thing Decaf records about what you did, it exists so the hold time can escalate from 3 seconds to 7 to 11 to 15, and it resets overnight.
-- which page you granted colour to, for as long as you are on it
+- while a Lock is running, a snapshot of the settings that Lock is holding, so that a stale settings tab cannot quietly weaken it. It is removed when the Lock ends.
+- **how many five-minute passes you have taken, counted per site per day, for the last fourteen days.** This is the only thing Decaf records about what you did. It exists for two reasons: so the hold time can escalate from 3 seconds to 7 to 11 to 15, and so that after a month-long Lock the settings page can tell you something true about whether it helped. The oldest day falls off on its own. It is a count, not a history — it does not record what you looked at, when, or for how long.
 
-There is no history, no page content, no list of what you looked at, and no record of yesterday.
+Colour granted to a page is **not** in that list and is not written down anywhere. It lives in the tab, for as long as you are on that page, and is gone when you leave it.
+
+There is no browsing history, no page content, and no list of what you looked at.
 
 ## What Decaf reads
 
-Decaf's content scripts run on the twelve hosts listed in its manifest and nowhere else. It does not hold a `tabs` permission and cannot see the pages you visit on any other site.
+Decaf's content scripts run on the twelve hosts listed in its manifest, plus any site you have added yourself and granted permission for, and nowhere else. It does not hold a `tabs` permission and cannot see the pages you visit on any other site.
 
 On those twelve, it reads the page in order to change it: the address, so it can tell a feed apart from a page you opened on purpose; and the text and accessible labels of elements, so it can find the reward numbers. Sites write those numbers in every shape there is — the word inside the number, beside it, in front of it, on the icon next to it, or nowhere at all — which is why the matching has to look at labels rather than just at text.
 

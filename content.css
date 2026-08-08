@@ -25,28 +25,70 @@
 
 /* ---------------------------------------------------------------- boot ----- */
 
-html.decaf-boot {
-  background: #faf8f5 !important;
-}
-
-html.decaf-boot body {
+/*
+ * A feed route stays blank for the few milliseconds it takes to read settings,
+ * so a feed never gets a chance to paint before it is paused.
+ *
+ * Only the feed's own containers, not the whole page. `visibility: hidden` on
+ * <body> blanked every YouTube, Reddit and X home page on every load — including
+ * for someone who had switched Decaf off entirely, or switched off that one
+ * site, or turned "Pause feeds" off, none of whom were going to have anything
+ * hidden at all. The site class is known from the URL alone, so it is set before
+ * the storage read and the blank can be aimed. The selectors below are the same
+ * `feedSelectors` the paused-feed rules use; a test keeps the two lists in step.
+ */
+html.decaf-boot ytd-browse[page-subtype="home"] ytd-rich-grid-renderer,
+html.decaf-boot ytd-shorts,
+html.decaf-boot ytd-rich-grid-renderer,
+html.decaf-boot.decaf-site-instagram main,
+html.decaf-boot.decaf-site-tiktok main,
+html.decaf-boot div[aria-label^="Timeline"][role="region"],
+html.decaf-boot shreddit-feed,
+html.decaf-boot #siteTable,
+html.decaf-boot [role="feed"],
+html.decaf-boot [data-pagelet="MainFeed"],
+html.decaf-boot.decaf-site-threads main,
+html.decaf-boot.decaf-site-bluesky main,
+html.decaf-boot.decaf-site-twitch main,
+html.decaf-boot [data-test-id="homefeed-feed"],
+html.decaf-boot.decaf-site-linkedin main .scaffold-finite-scroll,
+html.decaf-boot.decaf-site-googlenews main c-wiz,
+html.decaf-boot.decaf-site-custom body {
   visibility: hidden !important;
-}
-
-@media (prefers-color-scheme: dark) {
-  html.decaf-boot {
-    background: #131211 !important;
-  }
 }
 
 /* ------------------------------------------------------- quiet visuals ----- */
 
 /* Media loses its color. Nothing is hidden, nothing moves, the page still scrolls. */
+/*
+ * `contrast(0.96)` used to ride along here. It flattened the page slightly, which
+ * looked calmer — and it applies to every image, including the ones that are
+ * screenshots of text, so it pushed real text below 4.5:1 on anything already
+ * near the line. Grayscale alone is the whole idea; the contrast was decoration.
+ */
 html.decaf-on img,
 html.decaf-on video,
-html.decaf-on canvas,
-html.decaf-on [style*="background-image"] {
-  filter: grayscale(1) contrast(0.96) !important;
+html.decaf-on canvas {
+  filter: grayscale(1) !important;
+}
+
+/*
+ * A decorative background, and only where it cannot be a container.
+ *
+ * `filter` makes an element the containing block for every `position: fixed`
+ * descendant and gives it its own stacking context. The bare
+ * `[style*="background-image"]` selector matched any wrapper a site happened to
+ * put an inline background on — and if that wrapper contained a modal, a
+ * dropdown, a lightbox, a toast or a sticky player, the overlay stopped being
+ * anchored to the viewport and was clipped to the wrapper instead. So this is
+ * scoped to the content landmarks, and to elements that hold nothing.
+ */
+html.decaf-on :where(article, main, [role="main"], [role="feed"], [role="article"], #contents, #primary)
+  [style*="background-image"]:empty,
+html.decaf-on a[style*="background-image"]:not(:has(*)),
+html.decaf-on span[style*="background-image"],
+html.decaf-on i[style*="background-image"] {
+  filter: grayscale(1) !important;
 }
 
 /* Drawings count as media too: LinkedIn's reaction faces and a verified tick are
@@ -119,10 +161,25 @@ html.decaf-color.decaf-site-googlenews main img {
 
 /* Reward counts are replaced with a dash by content.js. Notification badges keep
    their number — you should not miss a message — but lose the urgent red. */
+/*
+ * Muted with lightness, not with transparency.
+ *
+ * `opacity` composites the number and its background together toward whatever is
+ * behind them, which shrinks the gap between the two: on X's light theme it took
+ * a badge count from 3.0:1 to 2.15:1 — small bold text, failing WCAG 1.4.3, on
+ * the one element Decaf explicitly promises stays readable. Grayscale alone
+ * already removes the alarm; a touch of brightness finishes the job without
+ * touching the contrast between the digits and the pill they sit on.
+ */
 html.decaf-on .decaf-badge {
-  filter: grayscale(1) !important;
-  opacity: 0.65 !important;
+  filter: grayscale(1) brightness(1.12) !important;
   box-shadow: none !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html.decaf-on .decaf-badge {
+    filter: grayscale(1) brightness(0.85) !important;
+  }
 }
 
 html.decaf-hide-badges .decaf-badge {
@@ -510,7 +567,7 @@ html.decaf-on .decaf-notice.decaf-drop-4 {
     padding: 16px !important;
   }
 
-  html.decaf-on .decaf-notice p.decaf-notice-title {
+  html.decaf-on .decaf-notice .decaf-notice-title {
     font-size: 17px !important;
   }
 
@@ -524,7 +581,7 @@ html.decaf-on .decaf-notice.decaf-drop-4 {
   }
 }
 
-html.decaf-on .decaf-notice p.decaf-notice-title {
+html.decaf-on .decaf-notice .decaf-notice-title {
   font-size: 19px !important;
   font-weight: 620 !important;
   line-height: 1.3 !important;
@@ -545,9 +602,166 @@ html.decaf-on .decaf-notice p.decaf-notice-status {
   color: #6d675f !important;
 }
 
-html.decaf-on .decaf-notice p.decaf-notice-status:empty,
+/*
+ * The status line keeps its box when it is empty.
+ *
+ * `display: none` on an empty live region takes it out of the accessibility tree
+ * entirely, so it was never registered when its text arrived and nothing it says
+ * — "keep holding", "your five minutes are up" — was ever announced. Reserving
+ * the height also stops the card jumping the moment it speaks.
+ */
+html.decaf-on .decaf-notice p.decaf-notice-status {
+  min-height: 20px !important;
+}
+
 html.decaf-on .decaf-notice p[hidden] {
   display: none !important;
+}
+
+/* The one way out of the card that is not the hold. Deliberately quiet: it opens
+   settings, it does not open the feed. */
+html.decaf-on .decaf-notice .decaf-notice-escape {
+  box-sizing: border-box !important;
+  /* inline-block, or the top margin is an inline margin and never renders —
+     the link sat pressed against the status line. */
+  display: inline-block !important;
+  margin: 12px 0 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: none !important;
+  color: #6d675f !important;
+  font-family: inherit !important;
+  font-size: 13px !important;
+  font-weight: 400 !important;
+  line-height: 1.4 !important;
+  text-align: left !important;
+  text-decoration: underline !important;
+  text-transform: none !important;
+  letter-spacing: normal !important;
+  cursor: pointer !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  position: static !important;
+  float: none !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-escape:hover {
+  color: #1d1b19 !important;
+}
+
+html.decaf-on .decaf-notice .decaf-notice-escape:focus-visible {
+  outline: 2px solid #6f4e37 !important;
+  outline-offset: 2px !important;
+  border-radius: 4px !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-escape {
+  color: #a49b8f !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-escape:hover {
+  color: #f2efe9 !important;
+}
+
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-escape:focus-visible {
+  outline-color: #d8b79a !important;
+}
+
+/* ------------------------------------------------------- open feed ----- */
+
+/*
+ * While a pass is running the card is gone, and with it every sign that this is
+ * temporary. The five minutes used to run invisibly and then take the feed away
+ * mid-scroll. This is also the only control in Decaf that lets someone spend
+ * less than they asked for, which is why the button says what it does rather
+ * than being a bare countdown.
+ */
+html.decaf-on .decaf-counter {
+  box-sizing: border-box !important;
+  position: fixed !important;
+  left: 20px !important;
+  bottom: 20px !important;
+  z-index: 2147483000 !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 10px !important;
+  margin: 0 !important;
+  padding: 8px 12px !important;
+  border: 1px solid #e2dbd0 !important;
+  border-radius: 999px !important;
+  background: #fffefc !important;
+  box-shadow: 0 6px 20px rgba(28, 26, 24, 0.16) !important;
+  color: #2f2a25 !important;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif !important;
+  font-size: 13px !important;
+  line-height: 1.3 !important;
+  direction: ltr !important;
+  text-align: left !important;
+  pointer-events: auto !important;
+  transform: none !important;
+  filter: none !important;
+}
+
+html.decaf-on .decaf-counter .decaf-counter-time {
+  font-variant-numeric: tabular-nums !important;
+  color: inherit !important;
+  font: inherit !important;
+}
+
+html.decaf-on .decaf-counter.decaf-counter-ending {
+  border-color: #b4472b !important;
+}
+
+html.decaf-on .decaf-counter .decaf-counter-end {
+  box-sizing: border-box !important;
+  margin: 0 !important;
+  padding: 4px 10px !important;
+  border: 1px solid #d8cfc2 !important;
+  border-radius: 999px !important;
+  background: #f6f2ec !important;
+  color: #2f2a25 !important;
+  font-family: inherit !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  line-height: 1.3 !important;
+  letter-spacing: normal !important;
+  text-transform: none !important;
+  cursor: pointer !important;
+  width: auto !important;
+  min-width: 0 !important;
+  height: auto !important;
+  min-height: 0 !important;
+  position: static !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+html.decaf-on .decaf-counter .decaf-counter-end:hover {
+  border-color: #b9ae9f !important;
+  background: #efe9e0 !important;
+}
+
+@media (prefers-color-scheme: dark) {
+  html.decaf-on .decaf-counter {
+    border-color: #3a352f !important;
+    background: #1c1a18 !important;
+    color: #efe9e0 !important;
+  }
+
+  html.decaf-on .decaf-counter .decaf-counter-end {
+    border-color: #4a443c !important;
+    background: #2a2622 !important;
+    color: #efe9e0 !important;
+  }
+
+  html.decaf-on .decaf-counter .decaf-counter-end:hover {
+    border-color: #6b635a !important;
+    background: #332e29 !important;
+  }
 }
 
 html.decaf-on .decaf-notice .decaf-notice-hold {
@@ -581,6 +795,13 @@ html.decaf-on .decaf-notice .decaf-notice-hold {
   filter: none !important;
   box-shadow: none !important;
   min-height: 0 !important;
+}
+
+/* Only when idle: mid-hold the ring is the feedback and a background shift
+   underneath it reads as flicker. */
+html.decaf-on .decaf-notice .decaf-notice-hold:hover:not([data-holding="true"]) {
+  border-color: #b9ae9f !important;
+  background: #f4f0e9 !important;
 }
 
 html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] {
@@ -686,6 +907,11 @@ html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold {
   color: #f2efe9 !important;
 }
 
+html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold:hover:not([data-holding="true"]) {
+  border-color: #57504a !important;
+  background: #1d1a18 !important;
+}
+
 html.decaf-on .decaf-notice.decaf-dark .decaf-notice-hold[data-holding="true"] {
   border-color: #4a423b !important;
 }
@@ -773,12 +999,73 @@ html.decaf-on .decaf-pill.decaf-pill-aside {
   right: 96px !important;
 }
 
+/*
+ * Reduced motion means "do not animate", not "do not tell me what is happening".
+ *
+ * This used to paint the ring already full, at half opacity, from the first
+ * millisecond of the hold and never change it — so the one graphic on screen
+ * showed *finished* for up to nineteen seconds, which most people read as a dead
+ * button and let go of. content.js steps `data-progress` from 0 to 8 instead, so
+ * the ring advances in eight discrete jumps: progress without motion. The status
+ * line counts down alongside it, which serves screen reader users at the same
+ * time.
+ */
 @media (prefers-reduced-motion: reduce) {
   html.decaf-on .decaf-notice .decaf-notice-hold[data-holding="true"] .decaf-notice-fill {
     animation-name: none !important;
-    /* Shown complete rather than animating. The hold still takes its full time —
-       this is the indicator standing still, not the wait being skipped. */
-    stroke-dashoffset: 0;
-    opacity: 0.5 !important;
+    transition: none !important;
+    stroke-dashoffset: 119.4;
+  }
+
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="1"] .decaf-notice-fill { stroke-dashoffset: 104.5; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="2"] .decaf-notice-fill { stroke-dashoffset: 89.6; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="3"] .decaf-notice-fill { stroke-dashoffset: 74.6; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="4"] .decaf-notice-fill { stroke-dashoffset: 59.7; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="5"] .decaf-notice-fill { stroke-dashoffset: 44.8; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="6"] .decaf-notice-fill { stroke-dashoffset: 29.9; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="7"] .decaf-notice-fill { stroke-dashoffset: 14.9; }
+  html.decaf-on .decaf-notice .decaf-notice-hold[data-progress="8"] .decaf-notice-fill { stroke-dashoffset: 0; }
+}
+
+/* ------------------------------------------------------ forced colours ----- */
+
+/*
+ * Windows High Contrast forces every background to Canvas, which erases anything
+ * whose only signal is a fill. The card kept its text but lost its edges, the
+ * progress ring vanished into the button, and the pill and the chip became
+ * floating words. System colour keywords are the only ones that survive.
+ */
+@media (forced-colors: active) {
+  html.decaf-on .decaf-notice,
+  html.decaf-on .decaf-chip,
+  html.decaf-on .decaf-counter {
+    border: 1px solid CanvasText !important;
+    background: Canvas !important;
+    color: CanvasText !important;
+  }
+
+  html.decaf-on .decaf-notice .decaf-notice-hold,
+  html.decaf-on .decaf-pill,
+  html.decaf-on .decaf-counter .decaf-counter-end {
+    border: 1px solid ButtonBorder !important;
+    background: ButtonFace !important;
+    color: ButtonText !important;
+    forced-color-adjust: none;
+  }
+
+  html.decaf-on .decaf-notice .decaf-notice-track {
+    stroke: ButtonBorder !important;
+  }
+
+  html.decaf-on .decaf-notice .decaf-notice-fill {
+    stroke: Highlight !important;
+  }
+
+  /* Grayscale is meaningless when the UA has already replaced every colour, and
+     the filter only makes a forced-colors page muddier. */
+  html.decaf-on img,
+  html.decaf-on video,
+  html.decaf-on canvas {
+    filter: none !important;
   }
 }

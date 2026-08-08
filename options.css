@@ -1,40 +1,68 @@
+/**
+ * Decaf — settings page.
+ *
+ * The design tokens here and in popup.css are the same list on purpose: the two
+ * pages are one product seen at two sizes. If a value changes in one file it
+ * changes in the other.
+ *
+ * The switch geometry is shared too — border-box everywhere including the
+ * pseudo-elements, knob centred with `translate(_, -50%)` — so a border can
+ * never push the knob off centre. See the note at the top of popup.css.
+ */
+
 :root {
   color-scheme: light dark;
-  --bg: #faf8f5;
-  --card: #fffefc;
-  --text: #1d1b19;
-  --muted: #6d675f;
-  --line: #e7e0d5;
+  --bg: #f7f4ef;
+  --card: #fffdfa;
+  --text: #201d1a;
+  --muted: #6e675e;
+  --line: #e8e1d6;
+  --edge: #8a8279;
   --accent: #6f4e37;
+  --accent-hover: #5d4130;
   --accent-text: #fdfbf8;
-  --hover: #f2ede5;
+  --hover: #f1ebe1;
+  --track-off: #ded5c6;
+  --knob: #fffdfa;
+  --knob-on: #fffdfa;
+  --warn: #a2472c;
+  --shadow: 0 1px 2px rgba(32, 25, 18, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #131211;
-    --card: #1c1a18;
-    --text: #f2efe9;
+    --bg: #141210;
+    --card: #1d1a17;
+    --text: #f1ede6;
     --muted: #a49d92;
-    --line: #302c28;
+    --line: #2e2a25;
+    --edge: #7c746a;
     --accent: #d8b79a;
-    --accent-text: #16130f;
-    --hover: #221f1c;
+    --accent-hover: #e4c8ad;
+    --accent-text: #241708;
+    --hover: #262220;
+    --track-off: #3a352f;
+    --knob: #efe9e0;
+    --knob-on: #241708;
+    --warn: #e0a08a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-/* An explicit `hidden` attribute must win over the display rules above. */
+/* An explicit `hidden` attribute must win over any display rule below. */
 [hidden] {
   display: none !important;
 }
 
 body {
   margin: 0;
-  font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 1rem/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -49,6 +77,16 @@ body {
   padding: 56px 24px 72px;
 }
 
+code {
+  padding: 1px 5px;
+  font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+  font-size: 0.85em;
+  background: var(--hover);
+  border-radius: 5px;
+}
+
+/* --------------------------------------------------------------- head ----- */
+
 .head {
   display: flex;
   align-items: flex-start;
@@ -59,16 +97,16 @@ body {
 
 .brand {
   margin: 0 0 12px;
-  font-size: 13px;
-  font-weight: 590;
-  letter-spacing: 0.08em;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted);
 }
 
 h1 {
   margin: 0 0 10px;
-  font-size: 30px;
+  font-size: 1.875rem;
   font-weight: 640;
   letter-spacing: -0.02em;
   line-height: 1.2;
@@ -76,9 +114,15 @@ h1 {
 
 h2 {
   margin: 0;
-  font-size: 18px;
+  font-size: 1.125rem;
   font-weight: 620;
   letter-spacing: -0.01em;
+}
+
+h3 {
+  margin: 0 0 4px;
+  font-size: 0.9375rem;
+  font-weight: 600;
 }
 
 .lede {
@@ -86,6 +130,13 @@ h2 {
   margin: 0;
   color: var(--muted);
 }
+
+/* The master switch keeps its place while the heading wraps. */
+.head .switch {
+  margin-top: 6px;
+}
+
+/* -------------------------------------------------------------- cards ----- */
 
 .card {
   display: flex;
@@ -107,14 +158,20 @@ h2 {
 .detail {
   max-width: 34rem;
   margin: 6px 0 0;
-  font-size: 14px;
+  font-size: 0.875rem;
+  line-height: 1.55;
   color: var(--muted);
+}
+
+.detail.warn {
+  color: var(--warn);
 }
 
 .facts {
   margin: 0;
   padding-left: 20px;
-  font-size: 14px;
+  font-size: 0.875rem;
+  line-height: 1.55;
   color: var(--muted);
 }
 
@@ -122,15 +179,22 @@ h2 {
   margin-top: 6px;
 }
 
-/* switches ------------------------------------------------------------- */
+.facts strong {
+  color: var(--text);
+  font-weight: 590;
+}
+
+/* ------------------------------------------------------------- switch ----- */
 
 .switch,
 .setting,
 .site {
   display: flex;
   align-items: center;
-  gap: 16px;
+  gap: 14px;
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .switch {
@@ -138,7 +202,7 @@ h2 {
 }
 
 .switch-label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--muted);
 }
 
@@ -156,36 +220,42 @@ h2 {
 .switch-track {
   position: relative;
   flex-shrink: 0;
-  width: 42px;
-  height: 26px;
-  background: var(--line);
+  width: 38px;
+  height: 22px;
+  border: 1px solid var(--edge);
   border-radius: 999px;
-  transition: background 160ms ease;
+  background: var(--track-off);
+  transition: background 160ms ease, border-color 160ms ease;
 }
 
 .switch-track::after {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 20px;
-  height: 20px;
-  background: #fff;
+  top: 50%;
+  left: 2px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  transition: transform 160ms ease;
+  background: var(--knob);
+  box-shadow: var(--shadow);
+  transform: translate(0, -50%);
+  transition: transform 160ms ease, background 160ms ease;
 }
 
 input:checked + .switch-track {
   background: var(--accent);
+  border-color: var(--accent);
 }
 
 input:checked + .switch-track::after {
-  transform: translateX(16px);
+  background: var(--knob-on);
+  transform: translate(16px, -50%);
 }
 
-input:disabled + .switch-track {
-  opacity: 0.5;
+/* `aria-disabled` keeps a locked control in the tab order and carries its
+   reason with it, so the dimming happens here rather than through `:disabled`. */
+input[aria-disabled="true"] + .switch-track {
+  opacity: 0.55;
 }
 
 input:focus-visible + .switch-track {
@@ -193,10 +263,49 @@ input:focus-visible + .switch-track {
   outline-offset: 2px;
 }
 
-.setting + .setting {
-  margin-top: 4px;
-  padding-top: 18px;
-  border-top: 1px solid var(--line);
+/* -------------------------------------------------------- setting rows ----- */
+
+/*
+ * Rows are hoverable across their full width — the tint bleeds past the text
+ * into the card's padding, which is what makes the whole row read as one
+ * control rather than a sentence with a switch floating beside it.
+ */
+.setting,
+.site {
+  padding: 10px 12px;
+  margin: 0 -12px;
+  border-radius: 10px;
+  transition: background 120ms ease;
+}
+
+.setting:hover,
+.site:hover {
+  background: var(--hover);
+}
+
+.setting:hover .switch-track,
+.site:hover .switch-track,
+.switch:hover .switch-track {
+  border-color: var(--text);
+}
+
+.setting:hover input:checked + .switch-track,
+.site:hover input:checked + .switch-track,
+.switch:hover input:checked + .switch-track {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+.setting:hover input[aria-disabled="true"] + .switch-track,
+.site:hover input[aria-disabled="true"] + .switch-track {
+  border-color: var(--edge);
+  background: var(--track-off);
+}
+
+.setting:hover input[aria-disabled="true"]:checked + .switch-track,
+.site:hover input[aria-disabled="true"]:checked + .switch-track {
+  background: var(--accent);
+  border-color: var(--accent);
 }
 
 .setting-copy,
@@ -204,39 +313,99 @@ input:focus-visible + .switch-track {
   display: flex;
   flex: 1;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 
 .setting-copy strong,
 .site-copy strong {
-  font-size: 16px;
+  font-size: 1rem;
   font-weight: 590;
 }
 
 .setting-copy small,
 .site-copy small {
-  font-size: 14px;
+  font-size: 0.875rem;
+  line-height: 1.5;
   color: var(--muted);
 }
 
-/* sites ---------------------------------------------------------------- */
+/* The written state beside each switch: the words for what the pill shows. */
+.setting .switch-label,
+.site .switch-label {
+  min-width: 4.5em;
+  text-align: right;
+  font-size: 0.8125rem;
+  white-space: nowrap;
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------------- sites ----- */
 
 .sites {
   display: flex;
   flex-direction: column;
+  gap: 2px;
 }
 
-.site {
-  padding: 12px 0;
+.site .remove {
+  padding: 5px 10px;
+  font-size: 0.75rem;
+}
+
+.site .remove:hover {
+  color: var(--warn);
+  border-color: currentColor;
+}
+
+/* ---------------------------------------------------------- add a site ----- */
+
+.add-site {
+  margin-top: 6px;
+  padding-top: 18px;
   border-top: 1px solid var(--line);
 }
 
-.site:first-child {
-  border-top: 0;
-  padding-top: 2px;
+.add-form {
+  margin-top: 12px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  align-items: center;
 }
 
-/* controls ------------------------------------------------------------- */
+.add-label {
+  flex-basis: 100%;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+
+#add-host {
+  flex: 1 1 220px;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--edge);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--text);
+  font: inherit;
+  font-size: 0.875rem;
+}
+
+#add-host::placeholder {
+  color: var(--muted);
+  opacity: 0.7;
+}
+
+#add-host:hover {
+  border-color: var(--text);
+}
+
+#add-host:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ------------------------------------------------------------ controls ----- */
 
 .lock-controls {
   display: flex;
@@ -246,42 +415,63 @@ input:focus-visible + .switch-track {
 }
 
 .segmented {
-  display: flex;
+  display: inline-flex;
+  gap: 2px;
   padding: 3px;
   background: var(--hover);
-  border-radius: 11px;
+  border-radius: 10px;
 }
 
 .segmented button {
-  padding: 8px 16px;
+  padding: 7px 14px;
   font: inherit;
-  font-size: 14px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  white-space: nowrap;
   color: var(--muted);
   background: none;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
 }
 
 .segmented button[aria-checked="true"] {
   color: var(--text);
+  font-weight: 600;
   background: var(--card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow);
 }
 
 .button {
-  padding: 10px 16px;
+  padding: 9px 16px;
   font: inherit;
+  font-size: 0.9375rem;
   font-weight: 560;
   color: var(--text);
-  background: none;
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 10px;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .button:hover:not(:disabled) {
   background: var(--hover);
+  border-color: var(--edge);
+}
+
+.button:active:not(:disabled) {
+  background: var(--line);
+}
+
+.button:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .button.primary {
@@ -291,16 +481,18 @@ input:focus-visible + .switch-track {
 }
 
 .button.primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--accent-hover);
+  border-color: transparent;
+}
+
+.button.primary:active:not(:disabled) {
+  background: var(--accent);
 }
 
 .button.quiet {
+  font-size: 0.875rem;
   font-weight: 500;
-}
-
-.button:disabled {
-  cursor: default;
-  opacity: 0.45;
+  background: none;
 }
 
 .button:focus-visible,
@@ -311,7 +503,7 @@ input:focus-visible + .switch-track {
 
 .badge {
   padding: 4px 10px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 560;
   white-space: nowrap;
   color: var(--muted);
@@ -325,16 +517,113 @@ input:focus-visible + .switch-track {
   border-color: transparent;
 }
 
+/* --------------------------------------------------------------- lock ----- */
+
+.summary {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.8125rem;
+  line-height: 1.6;
+  color: var(--muted);
+}
+
+.summary li {
+  margin: 3px 0;
+}
+
+.meter {
+  margin: 0;
+  font-size: 0.9375rem;
+}
+
+/* ---------------------------------------------------------- first run ----- */
+
+.intro .steps {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: step;
+  display: grid;
+  gap: 16px;
+}
+
+.intro .steps li {
+  counter-increment: step;
+  position: relative;
+  padding-left: 36px;
+}
+
+.intro .steps li::before {
+  content: counter(step);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 24px;
+  height: 24px;
+  font-size: 0.75rem;
+  font-weight: 620;
+  color: var(--accent-text);
+  background: var(--accent);
+  border-radius: 50%;
+}
+
+.intro .steps strong {
+  display: block;
+  font-size: 0.9375rem;
+  font-weight: 600;
+}
+
+.intro .steps small {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+.intro-links {
+  margin: 8px 0 0;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.intro-links a {
+  padding: 4px 12px;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: var(--accent);
+  text-decoration: none;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+
+.intro-links a:hover {
+  background: var(--hover);
+  border-color: var(--edge);
+}
+
+.intro-links a:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* --------------------------------------------------------------- misc ----- */
+
+/* A live region: it keeps its box while empty, or it is never announced. */
 .toast {
   min-height: 1.5em;
   margin: 0;
-  font-size: 14px;
+  font-size: 0.875rem;
   color: var(--accent);
 }
 
 .foot {
   margin-top: 8px;
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--muted);
 }
 
@@ -345,14 +634,73 @@ input:focus-visible + .switch-track {
 
 @media (prefers-reduced-motion: reduce) {
   .switch-track,
-  .switch-track::after {
+  .switch-track::after,
+  .button,
+  .segmented button,
+  .setting,
+  .site,
+  .intro-links a {
     transition: none;
   }
 }
 
 @media (max-width: 34rem) {
+  .page {
+    padding-top: 32px;
+  }
+
   .head {
     flex-direction: column;
     gap: 16px;
+  }
+
+  .head .switch {
+    margin-top: 0;
+  }
+}
+
+/*
+ * Windows High Contrast forces every background to Canvas, which erases
+ * anything whose only signal is a fill. System colour keywords are the only
+ * ones that survive.
+ */
+@media (forced-colors: active) {
+  .switch-track {
+    border: 1px solid ButtonBorder;
+    forced-color-adjust: none;
+    background: ButtonFace;
+  }
+
+  .switch-track::after {
+    background: ButtonText;
+  }
+
+  input:checked + .switch-track {
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  input:checked + .switch-track::after {
+    background: HighlightText;
+  }
+
+  .badge.on,
+  .segmented button[aria-checked="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .button,
+  .button.primary {
+    border: 1px solid ButtonBorder;
+  }
+
+  #add-host {
+    border-color: ButtonBorder;
+  }
+
+  .intro .steps li::before {
+    background: Highlight;
+    color: HighlightText;
   }
 }

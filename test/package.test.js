@@ -22,16 +22,32 @@ test("the manifest is ready to package", () => {
   assert.equal(manifest.name, "Decaf");
   assert.match(manifest.version, /^\d+\.\d+\.\d+$/);
   assert.ok(manifest.description.length >= 25 && manifest.description.length <= 132, "store description length");
-  assert.deepEqual(manifest.permissions, ["storage", "activeTab", "alarms"]);
-  assert.equal(manifest.host_permissions, undefined, "content script matches are enough");
+  assert.deepEqual(manifest.permissions, ["storage", "activeTab", "alarms", "scripting"]);
+  /*
+   * `host_permissions` names exactly the same hosts the content script already
+   * declares, so it adds no install warning a person has not already seen. It is
+   * there because content-script `matches` do not grant host access to any other
+   * API: without it `chrome.scripting` cannot put Decaf into tabs that were
+   * already open when it was installed or updated, which is the difference
+   * between "works on the next navigation" and "looks broken in the tab that
+   * prompted the install".
+   */
+  assert.deepEqual(manifest.host_permissions, manifest.content_scripts[0].matches);
+  assert.deepEqual(manifest.optional_host_permissions, ["*://*/*"], "sites the person adds are asked for one at a time");
   assert.equal(manifest.web_accessible_resources, undefined, "nothing needs to be exposed to pages");
   assert.equal(manifest.action.default_popup, "popup.html");
   assert.equal(manifest.options_page, "options.html");
   assert.equal(manifest.background.service_worker, "background.js");
+  assert.ok(manifest.homepage_url, "the store listing and the popup both need somewhere to point");
+  assert.ok(manifest.commands._execute_action, "the popup is reachable without a mouse");
+  assert.ok(manifest.commands["open-settings"], "so is the settings page");
   assert.deepEqual(manifest.content_scripts[0].js, ["core.js", "content.js"]);
   assert.deepEqual(manifest.content_scripts[0].css, ["content.css"]);
   assert.equal(manifest.content_scripts[0].run_at, "document_start");
-  assert.equal(manifest.content_scripts[0].all_frames, false);
+  // Same-origin subframes are part of the page: YouTube's live chat is one, and
+  // it used to sit in full colour with live counts beside a grayscaled player.
+  // content.js guards everything that must exist once per tab on `window.top`.
+  assert.equal(manifest.content_scripts[0].all_frames, true);
 
   for (const file of [
     ...EXTENSION_FILES,
