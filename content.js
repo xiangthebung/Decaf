@@ -216,8 +216,28 @@
     // Facebook's comment and share counts are bare numbers in unnamed buttons,
     // with the icon drawn in CSS. A button whose whole text is a number is a
     // counter; a button with words in it keeps them.
-    facebook: "[role='button']"
+    facebook: "[role='button']",
+    /*
+     * TikTok writes each count in a `<strong>` that is a *sibling* of its icon
+     * button rather than inside it, so there is no control around the number and
+     * nothing above it says what it is except this attribute. A structural hook
+     * is the right answer for it anyway: `data-e2e` is the same in every
+     * language TikTok ships, where the prose Decaf otherwise reads is not.
+     */
+    tiktok: "[data-e2e$='-count'],[data-e2e$='-count-container']"
   };
+
+  /**
+   * An element the site itself names as a count — `data-e2e="like-count"`,
+   * `class="view-count"`.
+   *
+   * This is deliberately narrower than REWARD_CONTEXT on its own. A reward word
+   * anywhere in an ancestor's classes is what made LinkedIn's `feed-shared-text`
+   * look like a share counter and turned a year inside a post into a dash. The
+   * word "count" alongside it is the site saying so on purpose, which is
+   * evidence enough to mask a number that belongs to no control.
+   */
+  const NAMED_COUNT = /count/i;
 
   function countElementSelector() {
     const extra = SITE_COUNT_ELEMENTS[site];
@@ -532,7 +552,7 @@
       current = current.parentElement;
       depth += 1;
     }
-    return `${text} ${controlContext(element)}`.replace(/\bdecaf-[\w-]+/g, " ");
+    return readable(`${text} ${controlContext(element)}`.replace(/\bdecaf-[\w-]+/g, " "));
   }
 
   /** The control a number belongs to, if it belongs to one at all. */
@@ -610,14 +630,14 @@
       if (value) text += ` ${value}`;
     }
     const inside = iconLabel(control);
-    if (inside) return `${text} ${inside}`;
+    if (inside) return readable(`${text} ${inside}`);
     let sibling = control.previousElementSibling;
     for (let hops = 0; sibling && hops < 2; hops += 1) {
       const label = iconLabel(sibling);
-      if (label) return `${text} ${label}`;
+      if (label) return readable(`${text} ${label}`);
       sibling = sibling.previousElementSibling;
     }
-    return text;
+    return readable(text);
   }
 
   // A number, optionally with a K/M/B suffix, but never eating the word after it.
@@ -692,9 +712,49 @@
   function isRewardCount(element) {
     if (REWARD_NOUN_FIRST.test(followingText(element))) return true;
     if (REWARD_NOUN_LAST.test(precedingText(element))) return true;
+    /*
+     * A number the site has named a count needs no control around it. TikTok
+     * hangs its counts off the icon button as siblings rather than children, so
+     * requiring a control left every one of them showing — fourteen on a single
+     * video page. Both halves have to match: `like` *and* `count`, on the
+     * element's own attributes, which is what keeps LinkedIn's `feed-shared-text`
+     * from qualifying a year inside a post.
+     */
+    const own = ownContext(element);
+    if (REWARD_CONTEXT.test(own) && (NAMED_COUNT.test(own) || holdsNothingButACount(element))) return true;
     const control = controlAround(element);
     if (!control) return false;
-    return REWARD_CONTEXT.test(controlContext(element)) || REWARD_CONTEXT.test(ownContext(element));
+    return REWARD_CONTEXT.test(controlContext(element)) || REWARD_CONTEXT.test(own);
+  }
+
+  /**
+   * An element that exists to show one number and nothing else.
+   *
+   * This is what separates TikTok's `DivLikeInfo`, whose whole content is
+   * `3927`, from LinkedIn's `feed-shared-text`, which wraps the body of a post
+   * and merely happens to contain the word "shared". Both put a reward word in
+   * their own class, so the class alone cannot tell them apart; what can is that
+   * one of them holds a count and the other holds prose that contains a year.
+   */
+  function holdsNothingButACount(element) {
+    const text = (element.textContent || "").trim();
+    return text.length <= MAX_TEXT_LENGTH && BARE_COUNT.test(text);
+  }
+
+  /**
+   * Puts a space at every camelCase seam, so a bounded word match can see the
+   * words inside a run-together name: `DivLikeInfo` becomes `Div Like Info`.
+   *
+   * Bounding REWARD_CONTEXT is what stopped `view` matching `preview` and
+   * `overview`, and it has to stay. But `[^a-z]` under an `i` flag excludes
+   * capitals as well, so the same change blinded Decaf to every name written in
+   * camelCase — which is how styled-components name things, and how TikTok
+   * labels each of the fourteen counts on a video page. Separating first keeps
+   * both: `Div Like Info` matches, `preview` still does not, because splitting
+   * on capitals never creates a seam inside an all-lowercase word.
+   */
+  function readable(text) {
+    return text.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2");
   }
 
   /** The element's own attributes, without climbing into its ancestors' classes. */
@@ -704,7 +764,7 @@
       const value = element.getAttribute?.(name);
       if (value) text += ` ${value}`;
     }
-    return text.replace(/\bdecaf-[\w-]+/g, " ");
+    return readable(text.replace(/\bdecaf-[\w-]+/g, " "));
   }
 
   function maskCounts(scope) {

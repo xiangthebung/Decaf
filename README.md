@@ -161,6 +161,10 @@ nothing about whether it matches.
 | `tools/fixture-site.js` | A small stand-in *site* per host: a feed, a post, a plain page and a game, linked to each other, so a run can navigate rather than only load. Used by `tools/verify-deep.js`. |
 | `tools/verify-deep.js` | End-to-end verification in a real Chromium: every setting, both extension pages, the hold, the Lock, the toolbar icon, and a click-through of all twelve sites. |
 | `tools/attach.js`, `tools/audit.js`, `tools/cdp.js` | Checks the real, signed-in sites by attaching to a Chrome you started yourself. `cdp.js` speaks the DevTools protocol directly, so it does not depend on a Playwright/Chrome version pairing. |
+| `tools/live-chat-check.js` | The one promise that must never break, on the real sites: no messaging surface treated as a feed, and nothing inside a docked conversation emptied. Counts and booleans only — it never reads a message. |
+| `tools/count-probe.js` | For a count the audit says survived, prints the markup around it — and with `--masked`, prints what Decaf *changed* instead, which is the only way to see over-masking. Reading this is what found that bounding the reward words had blinded them to camelCase. |
+| `tools/popup-why.js` | Asks a running Chrome why the toolbar button did nothing: the action's popup, enabled state and commands, per tab. A popup that never opens is invisible to every timing probe here, because they load `popup.html` as a page and that always works. |
+| `tools/perf-probe.js`, `tools/cpu-profile.js`, `tools/popup-repro.js` | Whether the extension is actually costing anything: main-thread lateness while a page sits still, worker storage writes, popup paint, and a CPU profile naming the hot function. Each warms up first — a first reading that blamed one site turned out to be that site being measured first. |
 
 Five design rules worth knowing before changing anything:
 

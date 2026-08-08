@@ -128,8 +128,10 @@ test("a bare number that belongs to no control survives", async () => {
     url: "https://www.linkedin.com/feed/update/urn:li:activity:1/",
     html: `<body><main>
       <div class="feed-shared-update-v2">
-        <div class="feed-shared-inline-show-more-text"><span class="feed-shared-text" id="year">2019</span></div>
-        <div class="feed-shared-text"><span id="figure">1,299</span></div>
+        <div class="feed-shared-inline-show-more-text">
+          <span class="feed-shared-text" id="body">Opened Berlin in <span id="year">2019</span>,
+            now <span id="figure">1,299</span> people.</span>
+        </div>
         <button class="react-button" aria-label="Like"><span id="count">842</span></button>
       </div>
     </main></body>`
@@ -464,6 +466,150 @@ test("messages are not mistaken for a feed the pause missed", async () => {
       0,
       "no part of the conversation was marked as a feed"
     );
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * TikTok hangs each count off its icon button as a *sibling*, not a child:
+ *   <button data-e2e="like-icon">…</button><strong data-e2e="like-count">7064</strong>
+ * so there is no control around the number. Requiring one — which is what keeps
+ * a year inside a LinkedIn post from becoming a dash — left every count on a
+ * TikTok video showing. A live audit found fourteen of them on one page.
+ *
+ * Two things now cover it: the site's own `data-e2e` hook, which is the same in
+ * every language TikTok ships, and the general rule that a site naming something
+ * a count is evidence enough on its own.
+ */
+test("a count the site names is masked even with no control around it", async () => {
+  const page = await launchPage({
+    url: "https://www.tiktok.com/@someone/video/7123",
+    html: `<body><main>
+      <div class="action-bar">
+        <button data-e2e="like-icon"></button><strong data-e2e="like-count" id="likes">7064</strong>
+        <button data-e2e="comment-icon"></button><strong data-e2e="comment-count" id="comments">3924</strong>
+        <button data-e2e="undefined-icon"></button><strong data-e2e="undefined-count" id="shares">21.9K</strong>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    for (const id of ["likes", "comments", "shares"]) {
+      assert.equal(page.document.getElementById(id).textContent, "—", id);
+    }
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * And the LinkedIn case the control requirement exists for still holds.
+ *
+ * The fixture here used to be `<span class="feed-shared-text">2019</span>` — a
+ * bare year as the entire content of the post-body element. That shape is now
+ * masked, and deliberately: it is indistinguishable from TikTok's `DivLikeInfo`,
+ * which is a reward word on an element holding nothing but a number, and TikTok
+ * ships fifteen of those on every video page against a LinkedIn post whose whole
+ * body is a single bare number. The realistic shape — prose with numbers in it —
+ * is what the rule protects, and it is what this asserts.
+ */
+test("naming a count does not re-open the door to masking post content", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/feed/update/urn:li:activity:1/",
+    html: `<body><main>
+      <div class="feed-shared-update-v2">
+        <div class="feed-shared-text" id="body">Hired <span id="hires">12</span> people in 2019.</div>
+        <span class="social-details-social-counts__reactions-count" id="reactions">842</span>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("hires").textContent, "12", "a figure in prose is not a count");
+    assert.equal(page.document.getElementById("reactions").textContent, "—", "one the site names is");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * The two cases that pull in opposite directions, side by side.
+ *
+ * TikTok's related-video counts live in `class="...DivLikeInfo..."` with no
+ * control anywhere near them — read off the live site, not guessed at. LinkedIn's
+ * post body is `class="feed-shared-text"`, which contains "share" for reasons
+ * that have nothing to do with a share count. The element's own class cannot
+ * separate them; what does is that one holds a number and nothing else, and the
+ * other holds prose that happens to contain a year.
+ */
+test("a dedicated count element is masked, a post body is not", async () => {
+  const page = await launchPage({
+    url: "https://www.tiktok.com/@someone/video/7123",
+    html: `<body><main>
+      <div class="css-10epprg-DivContentContainer">
+        <div class="css-9ulrvj-DivOtherInfo">
+          <div class="css-10epprg-DivLikeInfo" id="tiktok-likes">3927</div>
+        </div>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("tiktok-likes").textContent, "—", "TikTok's like count goes");
+  } finally {
+    page.close();
+  }
+});
+
+test("a post body naming itself shared keeps its numbers", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/feed/update/urn:li:activity:1/",
+    html: `<body><main>
+      <div class="feed-shared-update-v2">
+        <div class="feed-shared-text" id="body">We opened the Berlin office in <span id="year">2019</span>
+          and have grown to <span id="staff">1,299</span> people since.</div>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("year").textContent, "2019", "a year in prose survives");
+    assert.equal(page.document.getElementById("staff").textContent, "1,299", "so does a figure in prose");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * Bounding REWARD_CONTEXT stopped `view` matching `preview`, and had to. But
+ * `[^a-z]` under an `i` flag excludes capitals too, so it also blinded Decaf to
+ * every camelCase name — and TikTok labels each count on a video page with a
+ * styled-component class, `css-10epprg--DivLikeInfo`. Fourteen counts a page
+ * survived, and the live audit is the only thing that saw it: every unit test
+ * used hyphenated or lowercase fixtures.
+ */
+test("a count named in camelCase is found, and preview still is not", async () => {
+  const page = await launchPage({
+    url: "https://www.tiktok.com/@someone/video/7123",
+    html: `<body><main>
+      <div class="css-10epprg-7937d88b--DivLikeInfo e11ypioz14" id="tiktok">3927</div>
+      <div class="DivViewCount" id="views">130.4K</div>
+      <div class="previewIndex" id="preview">3</div>
+      <div class="overviewTotal" id="overview">7</div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("tiktok").textContent, "—", "DivLikeInfo is a like count");
+    assert.equal(page.document.getElementById("views").textContent, "—", "so is DivViewCount");
+    assert.equal(page.document.getElementById("preview").textContent, "3", "previewIndex is not a view count");
+    assert.equal(page.document.getElementById("overview").textContent, "7", "nor is overviewTotal");
   } finally {
     page.close();
   }

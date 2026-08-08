@@ -7,6 +7,8 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **Reward counts written in camelCase are masked again.** Bounding the reward words so `view` stopped matching `preview` also blinded Decaf to every name written in camelCase — which is how styled-components name things. TikTok labels each count on a video page that way, and fourteen of them a page were left showing. Only the live audit saw it: every unit test used hyphenated or lowercase class names.
+
 - **Decaf no longer empties a conversation.** Facebook's Marketplace was matched
   by its whole path prefix, which also covers the Marketplace inbox, an open
   conversation with a buyer, and a listing you opened on purpose — all read as
