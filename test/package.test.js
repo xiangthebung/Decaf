@@ -163,14 +163,30 @@ test("only the hosts that really are feeds are recognized", () => {
  */
 test("every feed container in core.js is emptied by content.css, and vice versa", () => {
   const EMPTY_SUFFIX = " > *:not(.decaf-notice):not(:has(.decaf-notice))";
+  /*
+   * `main` and `[role='main']` are the whole page on a feed route — and also the
+   * conversation pane inside the Messenger window Facebook docks on every page,
+   * and LinkedIn's message overlay. Emptying one of those took a person's chat
+   * away and left the container behind holding the site's own gradient. The
+   * guard is on the container rather than the child, so a conversation is never
+   * a candidate in the first place. content.js refuses the same regions in
+   * `findFeedAnchors` and `visibleFeedItems`; this keeps the stylesheet, which
+   * empties with no script involved at all, in step with it.
+   */
+  const CHAT_GUARD = ":not([role='dialog'] *):not([aria-label*='message' i] *):not([aria-label*='chat' i] *)";
+  const BROAD = new Set(["main", "[role='main']", "main[role='main']"]);
   const emptied = new Set();
   for (const group of contentCss.matchAll(/html\.decaf-hide-feed\.decaf-site-([a-z]+)\s+([^,{]+)/g)) {
     emptied.add(`${group[1]} ${group[2].trim()}`);
   }
   for (const [key, site] of Object.entries(D.SITES)) {
     for (const selector of site.feedSelectors) {
-      const expected = `${key} ${selector}${EMPTY_SUFFIX}`;
-      assert.ok(emptied.has(expected), `content.css does not empty ${key}: ${selector}`);
+      const guard = BROAD.has(selector) ? CHAT_GUARD : "";
+      const expected = `${key} ${selector}${guard}${EMPTY_SUFFIX}`;
+      assert.ok(
+        emptied.has(expected),
+        `content.css does not empty ${key}: ${selector}${guard ? " (with the conversation guard)" : ""}`
+      );
       emptied.delete(expected);
     }
   }

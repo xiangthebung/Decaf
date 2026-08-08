@@ -235,6 +235,46 @@
    */
   const OWN_ATTRIBUTE = "data-decaf-own";
   const OURS = `[${OWN_ATTRIBUTE}]`;
+
+  /**
+   * Surfaces Decaf may never empty, treat as a feed, or count feed items inside,
+   * whatever the route says.
+   *
+   * "Messaging apps are deliberately out of scope. A conversation is not a feed,
+   * and Decaf should never come between you and a message." That was written as
+   * a route rule and nothing else, which left it true only for as long as every
+   * route rule was right. It was not: Facebook's Marketplace prefix swept in
+   * `/marketplace/inbox`, and the page-level `[role='main']` selector reaches
+   * into the Messenger window Facebook docks on *every* page — including the
+   * home feed, where the promise had quietly never held. Emptying that window
+   * leaves its container behind holding Messenger's own gradient, which is what
+   * a person sees instead of their conversation.
+   *
+   * So the promise is a structural guarantee now: a region that announces itself
+   * as a conversation, a chat or a dialog is off limits at the point Decaf
+   * decides what to touch, and no future mistake in the route table can reach
+   * past it. Named by role and accessible name rather than by class, because
+   * those are what these sites keep stable — and a false positive here costs a
+   * feed Decaf failed to pause, which is the safe direction.
+   */
+  const PROTECTED_SELECTOR = [
+    "[role='dialog']",
+    "[role='alertdialog']",
+    "[aria-label*='messenger' i]",
+    "[aria-label*='message' i]",
+    "[aria-label*='chat' i]",
+    "[aria-label*='conversation' i]",
+    "[data-pagelet*='Message' i]",
+    "[data-pagelet*='Chat' i]",
+    "#msg-overlay",
+    ".msg-overlay-list-bubble"
+  ].join(",");
+
+  /** True for anything inside a conversation, however Decaf arrived at it. */
+  function isProtected(node) {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    return Boolean(element?.closest?.(PROTECTED_SELECTOR));
+  }
   const ourElements = new WeakSet();
   // What one item in a feed looks like. Used to find a feed whose container Decaf
   // no longer recognizes, and to check afterwards that no item is left showing.
@@ -1007,7 +1047,8 @@
       }
       for (const element of found) matches.add(element);
     }
-    const list = Array.from(matches).filter((element) => element.parentElement);
+    // A conversation is never a feed, whatever the selector table matched.
+    const list = Array.from(matches).filter((element) => element.parentElement && !isProtected(element));
     const outermost = list.filter((element) => !list.some((other) => other !== element && other.contains(element)));
     // Document order, so the notice lands where the feed started.
     outermost.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
@@ -1106,7 +1147,10 @@
   function visibleFeedItems() {
     const selector = feedItemSelector();
     return Array.from(document.querySelectorAll(selector)).filter(
-      (item) => !isOurs(item) && !notice?.contains(item) && isRendered(item)
+      // Messages carry `[role='article']` on some of these sites, so without the
+      // guard `enforceEmptyFeed` would find a conversation's messages, decide
+      // they were the feed it had failed to empty, and empty the conversation.
+      (item) => !isOurs(item) && !isProtected(item) && !notice?.contains(item) && isRendered(item)
     );
   }
 

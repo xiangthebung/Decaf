@@ -42,7 +42,7 @@ Reddit is capped instead of hidden, because there the thread is the page. A post
 | TikTok | For You, Explore, Live |
 | X | Home, Explore, lists, communities |
 | Reddit | Home, Popular, All, any subreddit or user front page |
-| Facebook | News Feed, Reels, Watch, Marketplace, Groups feed |
+| Facebook | News Feed, Reels, Watch, Marketplace browse, Groups feed |
 | Threads | Home feed |
 | Bluesky | Home feed, custom feeds |
 | Twitch | Home, Browse |
@@ -52,6 +52,8 @@ Reddit is capped instead of hidden, because there the thread is the page. A post
 | Anything you add | Its front page, where the feed can be found by shape |
 
 Messaging apps are deliberately out of scope. A conversation is not a feed, and Decaf should never come between you and a message.
+
+That is enforced structurally rather than left to the route table. A region that announces itself as a dialog, a chat or a conversation — by `role` or by accessible name — is refused as a feed container and never counted as holding feed items, in both `content.js` and `content.css`. It has to be: sites dock a conversation on top of pages Decaf *is* acting on, and Facebook's docked Messenger window is a `role="main"` of its own, so the page-level selectors reached straight into it and hid every message. Written as a route rule alone, the promise held only for as long as every route rule was right — and one over-broad prefix (`/marketplace`, which also matches `/marketplace/inbox`) was enough to break it.
 
 ## Settings
 

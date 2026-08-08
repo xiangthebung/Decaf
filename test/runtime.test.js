@@ -377,3 +377,94 @@ test("running content.js twice in one world does nothing the second time", async
     page.close();
   }
 });
+
+/*
+ * Facebook docks a Messenger window on every page, including the feed routes
+ * where Decaf is emptying things — and Messenger's conversation pane is a
+ * `role="main"` of its own. The page-level selector reached straight into it and
+ * hid every message, leaving the container behind holding Messenger's own
+ * gradient: three chat windows showing a block of colour where the conversation
+ * had been. "A conversation is not a feed, and Decaf should never come between
+ * you and a message" was a route rule and nothing else; it is a structural
+ * guarantee now, so no future mistake in the route table can reach past it.
+ */
+test("a docked conversation is never emptied, even on a paused feed", async () => {
+  const page = await launchPage({
+    url: "https://www.facebook.com/",
+    html: `<!doctype html><html><body>
+      <div id="shell">
+        <div role="main" id="page-main">
+          <div role="feed" id="feed">
+            <div role="article" class="post">A post</div>
+            <div role="article" class="post">Another post</div>
+            <div role="article" class="post">A third post</div>
+          </div>
+        </div>
+      </div>
+      <div role="dialog" aria-label="Chat with Denise" id="dock">
+        <div id="dock-head">Denise</div>
+        <div role="main" id="dock-main">
+          <div role="article" class="msg" id="m1">Is it still available?</div>
+          <div role="article" class="msg" id="m2">Yes, it is.</div>
+        </div>
+        <div id="dock-composer"><input aria-label="Aa"></div>
+      </div>
+    </body></html>`
+  });
+  try {
+    await until(() => page.api.notice());
+    assert.equal(page.api.state().hidingFeed, true, "the feed itself is still paused");
+
+    // Only the content script's half is checked here. The emptying is done by
+    // content.css, which this harness does not load and whose `:has()` jsdom
+    // does not implement — a version of this test that asserted the messages
+    // were still displayed passed exactly the same with the fix reverted. The
+    // stylesheet's half is "a docked conversation survives a paused feed" in
+    // test/browser.test.js, which fails without it.
+    assert.equal(
+      page.api.anchors().some((element) => element.closest("#dock")),
+      false,
+      "the conversation is never a candidate to be emptied"
+    );
+    const notice = page.document.querySelector(".decaf-notice");
+    assert.equal(notice.closest("#dock"), null, "and the card did not land in it");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * The same guarantee from the other direction: `enforceEmptyFeed` looks for feed
+ * items still on screen and empties whatever holds them. Messages carry
+ * `[role='article']` too, so on a page where the real feed was already dealt
+ * with, the only "leftovers" it could find were the messages in the dock — and
+ * it would have emptied the conversation to satisfy itself.
+ */
+test("messages are not mistaken for a feed the pause missed", async () => {
+  const page = await launchPage({
+    url: "https://www.facebook.com/",
+    html: `<!doctype html><html><body>
+      <div role="main" id="page-main"><div role="feed" id="feed"></div></div>
+      <div role="dialog" aria-label="Chat with Denise" id="dock">
+        <div role="article" class="msg" id="m1">One</div>
+        <div role="article" class="msg" id="m2">Two</div>
+        <div role="article" class="msg" id="m3">Three</div>
+        <div role="article" class="msg" id="m4">Four</div>
+      </div>
+    </body></html>`
+  });
+  try {
+    await settle(8);
+    for (const id of ["m1", "m2", "m3", "m4"]) {
+      const element = page.document.getElementById(id);
+      assert.equal(page.window.getComputedStyle(element).display !== "none", true, id);
+    }
+    assert.equal(
+      page.document.querySelectorAll("#dock .decaf-feed-container, #dock.decaf-feed-container").length,
+      0,
+      "no part of the conversation was marked as a feed"
+    );
+  } finally {
+    page.close();
+  }
+});
