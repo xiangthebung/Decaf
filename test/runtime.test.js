@@ -614,3 +614,46 @@ test("a count named in camelCase is found, and preview still is not", async () =
     page.close();
   }
 });
+
+/*
+ * A Queens cell meets every test Decaf has for a notification badge, and does so
+ * honestly: 45x45, one crown inside it, no text, and painted a strong colour —
+ * because on Queens the colour *is* the puzzle. The board is already exempt from
+ * the grayscale, but the badge mark is a separate treatment, and "Hide
+ * notification counts" turns it into `display: none`: crowns and regions both
+ * gone. Read off the live board, including the cell colour.
+ */
+test("nothing on a game board is treated as a notification badge", async () => {
+  const cell = (index) =>
+    `<div role="button" class="cell" style="width:45px;height:45px;background:rgb(230,243,136)">
+       <svg aria-label="Queen" width="24" height="24"><path d="M2 20h20v2H2z"></path></svg>
+     </div>`.replace("cell", `cell c${index}`);
+  const page = await launchPage({
+    url: "https://www.linkedin.com/games/queens/",
+    html: `<body><main>
+      <section id="queens-game-board">${[0, 1, 2, 3].map(cell).join("")}</section>
+      <nav><a href="/notifications"><span class="badge" style="background:rgb(220,40,40)">3</span></a></nav>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle(4);
+    // The board is not marked here: `syncGameBoard` measures cells, and this
+    // harness has no layout. That is the point — the guard has to hold on the
+    // named board before anything has been measured, because the badge pass runs
+    // first. A board found by shape is caught afterwards by `clearBadgesOn`,
+    // which needs a real browser to exercise.
+    assert.equal(
+      page.document.querySelectorAll("#queens-game-board .decaf-badge").length,
+      0,
+      "no part of the board is marked as a badge"
+    );
+    // The queens themselves are still there, whatever the badge setting says.
+    assert.equal(page.document.querySelectorAll("#queens-game-board svg[aria-label='Queen']").length, 4);
+    // And a real badge outside the board is still found, so this is an exemption
+    // rather than the badge finder having been broken.
+    assert.equal(page.document.querySelectorAll("nav .decaf-badge").length, 1, "a real badge still goes");
+  } finally {
+    page.close();
+  }
+});

@@ -853,9 +853,29 @@
     return Boolean(element.matches?.("a,button,input,select,textarea,[role='button'],[role='link'],[role='tab'],[role='menuitem']"));
   }
 
+  /*
+   * Nothing on a game board is a notification badge.
+   *
+   * A Queens cell meets every test for one and does so honestly: it is 45x45,
+   * holds a single crown and no text, and is painted a strong colour — because
+   * the colour *is* the puzzle. The board is already exempt from the grayscale,
+   * but the badge mark is a second, separate treatment, and "Hide notification
+   * counts" turns it into `display: none`. That takes the crowns off the board
+   * and the regions with them, which is not a calmer game, it is a broken one.
+   */
+  function onGameBoard(element) {
+    // Both forms, because the two are available at different moments: the named
+    // board can be recognised immediately, while the marked class only exists
+    // after `syncGameBoard` has run — and badges are marked before it, so a
+    // guard that trusted the class alone would be inert on the first pass.
+    return Boolean(element?.closest?.(`${GAME_BOARD_SELECTOR},.decaf-game-board`));
+  }
+
   function markBadge(element) {
+    if (route === "game" && onGameBoard(element)) return;
     const target = paintedBadge(element);
     if (target.classList.contains("decaf-badge")) return;
+    if (route === "game" && onGameBoard(target)) return;
     target.classList.add("decaf-badge");
   }
 
@@ -1949,6 +1969,7 @@
     const named = main.querySelector(GAME_BOARD_SELECTOR);
     if (named) {
       named.classList.add("decaf-game-board");
+      clearBadgesOn(named);
       return;
     }
 
@@ -1968,6 +1989,20 @@
     }
     if (!best) return;
     best.element.classList.add("decaf-game-board");
+    clearBadgesOn(best.element);
+  }
+
+  /**
+   * Takes the badge mark off anything inside a board that has just been found.
+   *
+   * A board found by shape only becomes recognisable once it has been measured,
+   * which happens after the badge pass has already run over it. Marking it is
+   * therefore always one step behind, and this is the step that catches up.
+   */
+  function clearBadgesOn(board) {
+    for (const marked of board.querySelectorAll(".decaf-badge")) {
+      marked.classList.remove("decaf-badge");
+    }
   }
 
   function syncSurfaces() {
