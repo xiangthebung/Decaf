@@ -910,7 +910,7 @@ sections.popup = async () => {
       assert.equal(await page.locator("#unsupported").isVisible(), true);
       assert.equal(await page.locator("#site-card").isVisible(), false);
       assert.equal(await page.locator("#unsupported").innerText(),
-        "Decaf works on 12 feed-driven sites. Open one to see it here.");
+        "Decaf works on 12 feed-driven sites, plus any you add yourself. Open one to see it here.");
     } finally {
       await page.close();
     }
@@ -1538,11 +1538,18 @@ sections.crawl = async () => {
     await setSettings();
     const page = await open("reddit", "feed");
     try {
+      // A subreddit front page is a feed of its own now, so following the
+      // sidebar link out of one paused feed lands on another paused feed — its
+      // posts are not there to be clicked, which is the entire point.
       await page.locator("#to-sub").click();
       await page.waitForLoadState("domcontentloaded");
       await settle(page);
-      assertInvariants(await snapshot(page), current);
-      await page.locator("#p1").click();
+      const sub = await snapshot(page);
+      assertInvariants(sub, current);
+      assert.equal(sub.notice, true, "a subreddit front page is paused too");
+      // The thread is reached the way a person actually reaches one from a
+      // paused world: a link from search, a share, the address bar.
+      await page.goto(url("reddit", "/r/fixit/comments/abc123/leaking_dishwasher/"));
       await page.waitForLoadState("domcontentloaded");
       await settle(page);
       assertInvariants(await snapshot(page), current);
@@ -1554,7 +1561,7 @@ sections.crawl = async () => {
       const shot = await snapshot(page);
       assertInvariants(shot, current);
       assert.equal(shot.notice, true, "back on the feed, still paused");
-      return "feed → r/fixit → thread → back → back";
+      return "feed → r/fixit (paused) → thread by address → back → back";
     } finally {
       await page.close();
     }

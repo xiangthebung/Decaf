@@ -110,7 +110,8 @@ test("the toolbar title survives an icon that will not load", async () => {
   await settle();
   assert.deepEqual(worker.chrome.__calls.icons, [], "the icon really did fail");
   assert.equal(worker.chrome.__calls.titles.at(-1), "Decaf — off", "the title is still correct");
-  assert.equal(worker.warnings.length, 1, "and the failure is not silent");
+  // One warning per paint — the global pass and the per-tab pass both say so.
+  assert.ok(worker.warnings.length >= 1, "and the failure is not silent");
   assert.match(worker.warnings[0], /toolbar could not be set to "off"/);
   assert.match(worker.warnings[0], /icon:/);
 });
@@ -139,6 +140,9 @@ test("the toolbar describes the tab in front of you, not the whole browser", asy
   await settle();
   assert.equal(on.chrome.__calls.titles.at(-1), "Decaf — on for YouTube");
   assert.equal(on.chrome.__calls.icons.at(-1), "icons/icon16.png");
+  // The global state is painted first, so a context the per-tab pass has not
+  // reached still tells the truth instead of the manifest's bare "Decaf".
+  assert.equal(on.chrome.__calls.titles[0], "Decaf — on");
 
   const elsewhere = launchWorker({ tabUrl: "https://example.com/" });
   await settle();

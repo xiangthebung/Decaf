@@ -642,11 +642,14 @@ const SITES = {
           </div>`);
       }
       if (pathname.startsWith("/marketplace")) {
+        // Marketplace is a paused surface now, and the real one puts its
+        // endless grid inside role="main" — the container the pause empties.
         return page("Marketplace | Facebook", `
           ${HEADER("facebook")}
-          <div id="mount"><main><h1>Marketplace</h1>
-            <a class="item" href="/natgeo/posts/12345">A post</a>
-            <a class="item" href="/">Home</a>
+          <div id="mount"><main role="main"><h1>Marketplace</h1>
+            <div role="article" class="item"><a href="/natgeo/posts/12345">A listing</a></div>
+            <div role="article" class="item"><a href="/natgeo/posts/22222">Another listing</a></div>
+            <div role="article" class="item"><a href="/natgeo/posts/33333">A third listing</a></div>
             ${COUNTS}
           </main></div>`);
       }

@@ -204,6 +204,15 @@ async function sync() {
 
     if (seen !== clockSeen) await chrome.storage.local.set({ [D.CLOCK_SEEN_KEY]: seen });
 
+    /*
+     * Global first, then the tab in front. The per-tab painting only ever
+     * reaches tabs whose events the worker was awake to see; the global state
+     * is what every other context shows, and skipping it left the toolbar on
+     * the manifest's bare "Decaf" — a title that says nothing — everywhere the
+     * per-tab pass had not been.
+     */
+    const globalState = D.isLocked(settings, now) ? "locked" : settings.enabled ? "on" : "off";
+    await show(globalState);
     await paintActiveTab(settings);
 
     await chrome.alarms.clear(LOCK_ALARM);
