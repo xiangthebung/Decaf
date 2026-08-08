@@ -1,41 +1,81 @@
+/**
+ * Decaf — popup.
+ *
+ * The design tokens here and in options.css are the same list on purpose: the
+ * two pages are one product seen at two sizes, and nothing should read as a
+ * different app. If a value changes in one file it changes in the other.
+ *
+ * The switch geometry is worth a note, because it went wrong once. Everything
+ * is border-box — including the pseudo-elements, which the bare `*` selector
+ * does not reach — and the knob is centred with `translate(_, -50%)` rather
+ * than a hand-tuned `top`, so adding or removing a border can never push it off
+ * centre again. Track 38×22, knob 16, a 3px visual inset all round, and a 16px
+ * travel that lands the knob exactly 3px from the far edge.
+ */
+
 :root {
   color-scheme: light dark;
-  --bg: #faf8f5;
-  --card: #fffefc;
-  --text: #1d1b19;
-  --muted: #6d675f;
-  --line: #e7e0d5;
+  --bg: #f7f4ef;
+  --card: #fffdfa;
+  --text: #201d1a;
+  --muted: #6e675e;
+  --line: #e8e1d6;
+  /* Control borders. Clears 3:1 against the card, which is what lets a switch
+     be seen at all at low vision — a pale pill on a pale card is not a state. */
+  --edge: #8a8279;
   --accent: #6f4e37;
+  --accent-hover: #5d4130;
   --accent-text: #fdfbf8;
-  --hover: #f2ede5;
+  --hover: #f1ebe1;
+  --track-off: #ded5c6;
+  --knob: #fffdfa;
+  --knob-on: #fffdfa;
+  --warn: #a2472c;
+  --shadow: 0 1px 2px rgba(32, 25, 18, 0.14);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #131211;
-    --card: #1c1a18;
-    --text: #f2efe9;
+    --bg: #141210;
+    --card: #1d1a17;
+    --text: #f1ede6;
     --muted: #a49d92;
-    --line: #302c28;
+    --line: #2e2a25;
+    --edge: #7c746a;
     --accent: #d8b79a;
-    --accent-text: #16130f;
-    --hover: #221f1c;
+    --accent-hover: #e4c8ad;
+    --accent-text: #241708;
+    --hover: #262220;
+    --track-off: #3a352f;
+    --knob: #efe9e0;
+    /* A dark knob on the light tan accent: a light knob there is 2:1 and mush. */
+    --knob-on: #241708;
+    --warn: #e0a08a;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.4);
   }
 }
 
-* {
+*,
+*::before,
+*::after {
   box-sizing: border-box;
 }
 
-/* An explicit `hidden` attribute must win over the display rules above. */
+/* An explicit `hidden` attribute must win over any display rule below. */
 [hidden] {
   display: none !important;
 }
 
+/*
+ * Sized in `rem`, so someone who has raised Chrome's default font size gets a
+ * bigger popup rather than the same box with the text clipped out of it. The
+ * maximum is Chrome's own ceiling for an action popup.
+ */
 body {
-  width: 328px;
+  width: 20.5rem;
+  max-width: 800px;
   margin: 0;
-  font: 15px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+  font: 0.9375rem/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
@@ -44,34 +84,46 @@ body {
 .shell {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 16px;
+  gap: 10px;
+  padding: 14px;
 }
 
 .head {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  padding: 2px 2px 0;
 }
 
 .brand {
   margin: 0;
-  font-size: 13px;
-  font-weight: 590;
-  letter-spacing: 0.08em;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
   color: var(--muted);
 }
+
+h2 {
+  margin: 0;
+  font-size: 1.0625rem;
+  font-weight: 620;
+  letter-spacing: -0.01em;
+}
+
+/* ------------------------------------------------------------- switch ----- */
 
 .switch {
   display: inline-flex;
   align-items: center;
   gap: 8px;
   cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
 }
 
 .switch-label {
-  font-size: 13px;
+  font-size: 0.8125rem;
   color: var(--muted);
 }
 
@@ -86,42 +138,64 @@ body {
 
 .switch-track {
   position: relative;
-  width: 40px;
-  height: 24px;
-  background: var(--line);
+  flex-shrink: 0;
+  width: 38px;
+  height: 22px;
+  border: 1px solid var(--edge);
   border-radius: 999px;
-  transition: background 160ms ease;
+  background: var(--track-off);
+  transition: background 160ms ease, border-color 160ms ease;
 }
 
 .switch-track::after {
   content: "";
   position: absolute;
-  top: 3px;
-  left: 3px;
-  width: 18px;
-  height: 18px;
-  background: #fff;
+  top: 50%;
+  left: 2px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-  transition: transform 160ms ease;
+  background: var(--knob);
+  box-shadow: var(--shadow);
+  transform: translate(0, -50%);
+  transition: transform 160ms ease, background 160ms ease;
 }
 
 .switch input:checked + .switch-track {
   background: var(--accent);
+  border-color: var(--accent);
 }
 
 .switch input:checked + .switch-track::after {
-  transform: translateX(16px);
+  background: var(--knob-on);
+  transform: translate(16px, -50%);
 }
 
-.switch input:disabled + .switch-track {
-  opacity: 0.5;
+.switch:hover input:not([aria-disabled="true"]) + .switch-track {
+  border-color: var(--text);
+}
+
+.switch:hover input:checked:not([aria-disabled="true"]) + .switch-track {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* `aria-disabled` keeps a locked control in the tab order and carries its
+   reason with it, so the dimming happens here rather than through `:disabled`. */
+.switch input[aria-disabled="true"] + .switch-track {
+  opacity: 0.55;
+}
+
+.switch:has(input[aria-disabled="true"]) {
+  cursor: default;
 }
 
 .switch input:focus-visible + .switch-track {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* -------------------------------------------------------------- cards ----- */
 
 .card {
   display: flex;
@@ -140,18 +214,11 @@ body {
   gap: 8px;
 }
 
-h1,
-h2 {
-  margin: 0;
-  font-size: 17px;
-  font-weight: 620;
-  letter-spacing: -0.01em;
-}
-
 .badge {
   padding: 3px 9px;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 560;
+  white-space: nowrap;
   color: var(--muted);
   border: 1px solid var(--line);
   border-radius: 999px;
@@ -169,19 +236,47 @@ h2 {
 }
 
 .detail,
-.empty,
-.message {
+.empty {
   margin: 0;
-  font-size: 13px;
+  font-size: 0.8125rem;
+  line-height: 1.5;
   color: var(--muted);
 }
 
-.empty {
-  padding: 4px 2px 8px;
+.detail.warn {
+  color: var(--warn);
 }
 
-.message:empty {
-  display: none;
+.empty {
+  padding: 2px 2px 4px;
+}
+
+/*
+ * `#message` is a live region. It keeps its box while empty — `display: none`
+ * would take it out of the accessibility tree, and a region that is not in the
+ * tree when its text arrives is never announced.
+ */
+.message {
+  min-height: 1.25rem;
+  margin: 0;
+  font-size: 0.8125rem;
+  color: var(--accent);
+}
+
+.meter {
+  min-height: 1rem;
+  margin: 0;
+  padding: 0 2px;
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+/* -------------------------------------------------------- site actions ----- */
+
+.pass,
+.off-row {
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
 }
 
 .pass {
@@ -189,25 +284,39 @@ h2 {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding-top: 10px;
-  border-top: 1px solid var(--line);
-  font-size: 13px;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
+.off-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* ------------------------------------------------------------ buttons ----- */
+
 .button {
-  padding: 10px 14px;
+  padding: 9px 14px;
   font: inherit;
+  font-size: 0.875rem;
   font-weight: 560;
   color: var(--text);
-  background: none;
+  background: var(--card);
   border: 1px solid var(--line);
-  border-radius: 11px;
+  border-radius: 10px;
   cursor: pointer;
+  transition: background 120ms ease, border-color 120ms ease;
 }
 
 .button:hover:not(:disabled) {
   background: var(--hover);
+  border-color: var(--edge);
+}
+
+.button:active:not(:disabled) {
+  background: var(--line);
 }
 
 .button:disabled {
@@ -222,13 +331,19 @@ h2 {
 }
 
 .button.primary:hover:not(:disabled) {
-  filter: brightness(1.08);
+  background: var(--accent-hover);
+  border-color: transparent;
+}
+
+.button.primary:active:not(:disabled) {
+  background: var(--accent);
 }
 
 .button.quiet {
-  padding: 8px 12px;
-  font-size: 13px;
+  padding: 7px 12px;
+  font-size: 0.8125rem;
   font-weight: 500;
+  background: none;
 }
 
 .button.wide {
@@ -241,34 +356,102 @@ h2 {
   outline-offset: 2px;
 }
 
+/* ---------------------------------------------------------- segmented ----- */
+
 .segmented {
-  display: flex;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+  gap: 2px;
   padding: 3px;
   background: var(--hover);
-  border-radius: 11px;
+  border-radius: 10px;
 }
 
 .segmented button {
-  flex: 1;
-  padding: 7px 4px;
+  padding: 6px 2px;
   font: inherit;
-  font-size: 13px;
+  font-size: 0.75rem;
+  font-weight: 500;
+  white-space: nowrap;
   color: var(--muted);
   background: none;
   border: 0;
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
+  transition: background 120ms ease, color 120ms ease;
+}
+
+.segmented button:hover {
+  color: var(--text);
 }
 
 .segmented button[aria-checked="true"] {
   color: var(--text);
+  font-weight: 600;
   background: var(--card);
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  box-shadow: var(--shadow);
 }
+
+/* --------------------------------------------------------------- lock ----- */
+
+.summary {
+  margin: 0;
+  padding-left: 18px;
+  font-size: 0.75rem;
+  line-height: 1.55;
+  color: var(--muted);
+}
+
+.summary li {
+  margin: 2px 0;
+}
+
+/* --------------------------------------------------------------- misc ----- */
 
 @media (prefers-reduced-motion: reduce) {
   .switch-track,
-  .switch-track::after {
+  .switch-track::after,
+  .button,
+  .segmented button {
     transition: none;
+  }
+}
+
+/*
+ * Windows High Contrast forces every background to Canvas, which erases
+ * anything whose only signal is a fill. System colour keywords are the only
+ * ones that survive.
+ */
+@media (forced-colors: active) {
+  .switch-track {
+    border: 1px solid ButtonBorder;
+    forced-color-adjust: none;
+    background: ButtonFace;
+  }
+
+  .switch-track::after {
+    background: ButtonText;
+  }
+
+  .switch input:checked + .switch-track {
+    background: Highlight;
+    border-color: Highlight;
+  }
+
+  .switch input:checked + .switch-track::after {
+    background: HighlightText;
+  }
+
+  .badge.on,
+  .badge.pass,
+  .segmented button[aria-checked="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+
+  .button,
+  .button.primary {
+    border: 1px solid ButtonBorder;
   }
 }

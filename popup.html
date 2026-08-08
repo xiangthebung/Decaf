@@ -9,36 +9,50 @@
   <body>
     <main class="shell">
       <header class="head">
-        <p class="brand">Decaf</p>
+        <!-- The heading is the product, not the site: the site card is hidden on
+             pages Decaf does not touch, and the page used to lose its only
+             heading along with it. -->
+        <h1 class="brand">Decaf</h1>
         <label class="switch">
           <span class="switch-label" id="master-state">On</span>
-          <input id="master" type="checkbox" aria-label="Turn Decaf on">
+          <input id="master" type="checkbox" aria-label="Decaf">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
       </header>
 
       <section id="site-card" class="card" aria-labelledby="site-name">
         <div class="row">
-          <h1 id="site-name">Site</h1>
+          <h2 id="site-name">Site</h2>
           <span id="site-badge" class="badge">Off</span>
         </div>
         <p id="site-detail" class="detail"></p>
+        <p id="site-health" class="detail warn" hidden></p>
         <button id="site-enable" class="button primary" type="button" hidden>Turn on here</button>
+
+        <div id="site-off" class="off-row" hidden>
+          <p class="detail">Need this site to behave normally?</p>
+          <div id="snooze-choices" class="segmented" role="group" aria-label="Turn Decaf off for a while"></div>
+          <button id="site-disable" class="button quiet" type="button">Off until I turn it back on</button>
+        </div>
+
         <div id="pass-row" class="pass" hidden>
           <span id="pass-time">Feed open</span>
           <button id="pass-end" class="button quiet" type="button">Pause it again</button>
         </div>
       </section>
 
-      <p id="unsupported" class="empty" hidden>Decaf works on 12 feed-driven sites. Open one to see it here.</p>
+      <p id="unsupported" class="empty" hidden>Decaf works on 12 feed-driven sites, plus any you add yourself. Open one to see it here.</p>
 
       <section id="lock-card" class="card" aria-labelledby="lock-title">
         <h2 id="lock-title">Lock</h2>
         <p id="lock-detail" class="detail">Holds every Decaf setting in place until it ends.</p>
+        <ul id="lock-summary" class="summary" hidden></ul>
         <div id="lock-choices" class="segmented" role="radiogroup" aria-label="Lock duration"></div>
         <button id="lock-button" class="button primary" type="button">Lock</button>
         <button id="lock-cancel" class="button quiet" type="button" hidden>Cancel</button>
       </section>
+
+      <p id="passes" class="meter"></p>
 
       <p id="message" class="message" role="status" aria-live="polite"></p>
 

@@ -1,13 +1,94 @@
 {
   "manifest_version": 3,
   "name": "Decaf",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Calms feed-driven sites: no reward counts, no notification badges, no endless feeds. Everything you open on purpose still works.",
+  "author": "Xiang Li",
+  "homepage_url": "https://github.com/xiangthebung/Decaf",
   "minimum_chrome_version": "105",
   "permissions": [
     "storage",
     "activeTab",
-    "alarms"
+    "alarms",
+    "scripting"
+  ],
+  "host_permissions": [
+    "*://youtube.com/*",
+    "*://www.youtube.com/*",
+    "*://m.youtube.com/*",
+    "*://instagram.com/*",
+    "*://www.instagram.com/*",
+    "*://tiktok.com/*",
+    "*://www.tiktok.com/*",
+    "*://x.com/*",
+    "*://www.x.com/*",
+    "*://mobile.x.com/*",
+    "*://twitter.com/*",
+    "*://www.twitter.com/*",
+    "*://mobile.twitter.com/*",
+    "*://reddit.com/*",
+    "*://*.reddit.com/*",
+    "*://facebook.com/*",
+    "*://*.facebook.com/*",
+    "*://threads.net/*",
+    "*://www.threads.net/*",
+    "*://threads.com/*",
+    "*://www.threads.com/*",
+    "*://bsky.app/*",
+    "*://www.bsky.app/*",
+    "*://twitch.tv/*",
+    "*://www.twitch.tv/*",
+    "*://m.twitch.tv/*",
+    "*://pinterest.com/*",
+    "*://*.pinterest.com/*",
+    "*://pinterest.ca/*",
+    "*://*.pinterest.ca/*",
+    "*://pinterest.co.uk/*",
+    "*://*.pinterest.co.uk/*",
+    "*://pinterest.com.au/*",
+    "*://*.pinterest.com.au/*",
+    "*://pinterest.co.kr/*",
+    "*://*.pinterest.co.kr/*",
+    "*://pinterest.com.mx/*",
+    "*://*.pinterest.com.mx/*",
+    "*://pinterest.de/*",
+    "*://*.pinterest.de/*",
+    "*://pinterest.fr/*",
+    "*://*.pinterest.fr/*",
+    "*://pinterest.es/*",
+    "*://*.pinterest.es/*",
+    "*://pinterest.it/*",
+    "*://*.pinterest.it/*",
+    "*://pinterest.jp/*",
+    "*://*.pinterest.jp/*",
+    "*://pinterest.nz/*",
+    "*://*.pinterest.nz/*",
+    "*://pinterest.ie/*",
+    "*://*.pinterest.ie/*",
+    "*://pinterest.se/*",
+    "*://*.pinterest.se/*",
+    "*://pinterest.dk/*",
+    "*://*.pinterest.dk/*",
+    "*://pinterest.ch/*",
+    "*://*.pinterest.ch/*",
+    "*://pinterest.at/*",
+    "*://*.pinterest.at/*",
+    "*://pinterest.pt/*",
+    "*://*.pinterest.pt/*",
+    "*://pinterest.ph/*",
+    "*://*.pinterest.ph/*",
+    "*://pinterest.cl/*",
+    "*://*.pinterest.cl/*",
+    "*://pinterest.co/*",
+    "*://*.pinterest.co/*",
+    "*://pinterest.ru/*",
+    "*://*.pinterest.ru/*",
+    "*://linkedin.com/*",
+    "*://*.linkedin.com/*",
+    "*://news.google.com/*"
+  ],
+  "optional_host_permissions": [
+    "*://*/*"
   ],
   "action": {
     "default_title": "Decaf",
@@ -15,6 +96,20 @@
     "default_icon": {
       "16": "icons/icon16.png",
       "32": "icons/icon32.png"
+    }
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Alt+Shift+D"
+      },
+      "description": "Open Decaf"
+    },
+    "open-settings": {
+      "suggested_key": {
+        "default": "Alt+Shift+S"
+      },
+      "description": "Open Decaf settings"
     }
   },
   "background": {
@@ -39,6 +134,7 @@
         "*://www.tiktok.com/*",
         "*://x.com/*",
         "*://www.x.com/*",
+        "*://mobile.x.com/*",
         "*://twitter.com/*",
         "*://www.twitter.com/*",
         "*://mobile.twitter.com/*",
@@ -63,10 +159,42 @@
         "*://*.pinterest.co.uk/*",
         "*://pinterest.com.au/*",
         "*://*.pinterest.com.au/*",
+        "*://pinterest.co.kr/*",
+        "*://*.pinterest.co.kr/*",
+        "*://pinterest.com.mx/*",
+        "*://*.pinterest.com.mx/*",
         "*://pinterest.de/*",
         "*://*.pinterest.de/*",
         "*://pinterest.fr/*",
         "*://*.pinterest.fr/*",
+        "*://pinterest.es/*",
+        "*://*.pinterest.es/*",
+        "*://pinterest.it/*",
+        "*://*.pinterest.it/*",
+        "*://pinterest.jp/*",
+        "*://*.pinterest.jp/*",
+        "*://pinterest.nz/*",
+        "*://*.pinterest.nz/*",
+        "*://pinterest.ie/*",
+        "*://*.pinterest.ie/*",
+        "*://pinterest.se/*",
+        "*://*.pinterest.se/*",
+        "*://pinterest.dk/*",
+        "*://*.pinterest.dk/*",
+        "*://pinterest.ch/*",
+        "*://*.pinterest.ch/*",
+        "*://pinterest.at/*",
+        "*://*.pinterest.at/*",
+        "*://pinterest.pt/*",
+        "*://*.pinterest.pt/*",
+        "*://pinterest.ph/*",
+        "*://*.pinterest.ph/*",
+        "*://pinterest.cl/*",
+        "*://*.pinterest.cl/*",
+        "*://pinterest.co/*",
+        "*://*.pinterest.co/*",
+        "*://pinterest.ru/*",
+        "*://*.pinterest.ru/*",
         "*://linkedin.com/*",
         "*://*.linkedin.com/*",
         "*://news.google.com/*"
@@ -79,7 +207,8 @@
         "content.js"
       ],
       "run_at": "document_start",
-      "all_frames": false
+      "all_frames": true,
+      "match_about_blank": false
     }
   ]
 }

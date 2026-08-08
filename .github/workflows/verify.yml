@@ -5,6 +5,19 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+  schedule:
+    # Selector rot is silent and arrives on the site's schedule, not ours. This is
+    # the only check that would ever notice a redesign before a person did.
+    - cron: '0 7 * * 1'
+
+# A push to a branch with an open pull request fired this workflow twice, in
+# parallel, against the same commit.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   verify:
@@ -29,6 +42,12 @@ jobs:
       # so they exercise the artefact a user installs rather than the repository.
       - run: npm run verify
 
+      # `verifyReferences` is what stops the hand-written allowlist in
+      # scripts/build.mjs falling behind — eight icon paths exist only inside a JS
+      # object literal, so nothing in the manifest points at them. A guard that is
+      # never tested against a known-bad input can rot into a no-op.
+      - run: node scripts/negative-test.mjs
+
       # The packaged artefact comes out of the same code path a release does, so a
       # broken zip step fails here rather than on release day.
       - run: npm run zip
@@ -38,3 +57,60 @@ jobs:
           name: decaf-unpacked
           path: dist/
           if-no-files-found: error
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decaf-zip
+          path: artifacts/*.zip
+          if-no-files-found: error
+
+  browser:
+    name: real Chromium
+    runs-on: ubuntu-latest
+    needs: verify
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+
+      - run: npm run build
+
+      # Everything above this job proves the shape of the code. Only this one
+      # proves a selector matches anything, that the extension loads at all, and
+      # that the card is visible on a page rather than merely present in a
+      # stylesheet. It loads `dist/` — the directory that gets packaged.
+      - name: browser tests against the local fixtures
+        run: DECAF_BROWSER=1 npm test
+
+      - name: every setting, every page, every route
+        run: xvfb-run -a node tools/verify-deep.js
+
+  live:
+    name: live sites
+    runs-on: ubuntu-latest
+    # Only on the weekly run: these go over the network to twelve sites that owe
+    # us nothing, so a failure here is a signal to look, not a broken build.
+    if: github.event_name == 'schedule'
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+      - run: npm install --no-save playwright
+      - run: npx playwright install --with-deps chromium
+      - run: npm run build
+
+      - name: selectors against the real sites
+        run: DECAF_LIVE=1 npm test

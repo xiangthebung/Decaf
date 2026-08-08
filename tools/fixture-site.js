@@ -196,7 +196,9 @@ const SITES = {
     host: "www.reddit.com",
     feed: "/",
     media: "/r/fixit/comments/abc123/leaking_dishwasher/",
-    content: "/r/fixit/",
+    // A subreddit front page is an endless ranked list and is paused now, so
+    // `content` has to be somewhere a person navigated to that is not one.
+    content: "/settings/",
     render(pathname) {
       if (/\/comments\//.test(pathname)) {
         return page("Why is my dishwasher leaking? : r/fixit", `
@@ -622,7 +624,8 @@ const SITES = {
     host: "www.facebook.com",
     feed: "/",
     media: "/natgeo/posts/12345",
-    content: "/marketplace/",
+    // Marketplace is an endless scroll and is paused now.
+    content: "/messages/t/",
     render(pathname) {
       if (/\/posts\//.test(pathname)) {
         return page("A post | Facebook", `

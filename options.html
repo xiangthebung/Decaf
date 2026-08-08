@@ -16,10 +16,41 @@
         </div>
         <label class="switch">
           <span class="switch-label" id="master-state">On</span>
-          <input id="master" type="checkbox" aria-label="Turn Decaf on">
+          <input id="master" type="checkbox" aria-label="Decaf">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
       </header>
+
+      <!--
+        First run lands on a settings page for a product nobody has seen do
+        anything yet. Everything non-obvious about Decaf is in the page, not in
+        here: the toolbar icon Chrome hides behind its puzzle menu, the card that
+        replaces the feed, and the press-and-hold that is the one interaction a
+        person has to be told about.
+      -->
+      <section id="intro" class="card intro" aria-labelledby="intro-title" hidden>
+        <div class="card-head">
+          <div>
+            <h2 id="intro-title">Three things worth knowing</h2>
+          </div>
+          <button id="intro-dismiss" class="button quiet" type="button">Got it</button>
+        </div>
+        <ol class="steps">
+          <li>
+            <strong>Pin Decaf to your toolbar.</strong>
+            <small>Click the puzzle-piece icon in Chrome's toolbar and pin Decaf, so you can switch a site off in one click.</small>
+          </li>
+          <li>
+            <strong>Open one of these.</strong>
+            <small>Photos go grey and counts become a dash straight away. That is Decaf working, not the site breaking.</small>
+            <p id="intro-links" class="intro-links"></p>
+          </li>
+          <li>
+            <strong>The feed becomes a card.</strong>
+            <small>Where the feed was, you will find a card with one button. Press and hold it for three seconds to open the feed for five minutes.</small>
+          </li>
+        </ol>
+      </section>
 
       <p id="toast" class="toast" role="status" aria-live="polite"></p>
 
@@ -30,7 +61,7 @@
           </div>
         </div>
         <ul class="facts">
-          <li>Photos and video are grayscale. One tap on a page gives that page its color back.</li>
+          <li>Photos and video are grayscale. On a video, photo or post you have opened, a <strong>Show in color</strong> button appears in the bottom-right corner; it lasts until you leave that page.</li>
           <li>Likes, views and follower counts show a dash.</li>
           <li>Notification badges keep their number and lose the red.</li>
         </ul>
@@ -47,6 +78,7 @@
             <strong>Pause feeds</strong>
             <small>The feed is emptied where it sits. Search, menus and anything you open still work. Hold a button on the page to open it for five minutes.</small>
           </span>
+          <span class="switch-label" data-state="pauseFeeds">On</span>
           <input data-setting="pauseFeeds" type="checkbox" aria-label="Pause feeds">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
@@ -55,6 +87,7 @@
             <strong>Hide comments and replies</strong>
             <small>Threads and live chat go away. The post itself stays. On Reddit, where the thread is the answer, the top comments stay and the rest of the argument goes.</small>
           </span>
+          <span class="switch-label" data-state="hideComments">On</span>
           <input data-setting="hideComments" type="checkbox" aria-label="Hide comments and replies">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
@@ -72,6 +105,7 @@
             <strong>Turn media upside down</strong>
             <small>Fine if you mean to look. Tiring if you are only browsing.</small>
           </span>
+          <span class="switch-label" data-state="upsideDown">Off</span>
           <input data-setting="upsideDown" type="checkbox" aria-label="Turn media upside down">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
@@ -80,6 +114,7 @@
             <strong>Hide notification counts</strong>
             <small>Badges disappear. Your notifications stay where they were.</small>
           </span>
+          <span class="switch-label" data-state="hideBadges">Off</span>
           <input data-setting="hideBadges" type="checkbox" aria-label="Hide notification counts">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
@@ -93,6 +128,21 @@
           </div>
         </div>
         <div id="sites" class="sites"></div>
+
+        <div class="add-site">
+          <h3>Add a site</h3>
+          <p class="detail">
+            Added sites get the treatment that needs no site table: grayscale, reward counts, notification badges
+            and — where Decaf can recognise a feed by its shape — a paused front page. Comment hiding and the
+            per-site rails are only available on the twelve above.
+          </p>
+          <form id="add-form" class="add-form">
+            <label class="add-label" for="add-host">Website address</label>
+            <input id="add-host" name="host" type="text" inputmode="url" autocomplete="off" placeholder="news.ycombinator.com">
+            <button id="add-button" class="button primary" type="submit">Add</button>
+          </form>
+          <p id="add-error" class="detail warn" role="status" aria-live="polite"></p>
+        </div>
       </section>
 
       <section class="card" aria-labelledby="lock-title">
@@ -103,11 +153,28 @@
           </div>
           <span id="lock-badge" class="badge">Off</span>
         </div>
+        <ul id="lock-summary" class="summary" hidden></ul>
         <div class="lock-controls">
           <div id="lock-choices" class="segmented" role="radiogroup" aria-label="Lock duration"></div>
           <button id="lock-button" class="button primary" type="button">Lock</button>
           <button id="lock-cancel" class="button quiet" type="button" hidden>Cancel</button>
         </div>
+        <p class="detail">
+          A Lock holds Decaf against you at your weakest, not against an attacker: removing the extension
+          in <code>chrome://extensions</code> removes the Lock with it. It is a speed bump you agreed to,
+          and it is honest about being one.
+        </p>
+      </section>
+
+      <section class="card" aria-labelledby="meter-title">
+        <div class="card-head">
+          <div>
+            <h2 id="meter-title">Passes</h2>
+            <p class="detail">The only thing Decaf counts. It stays on this device and the oldest day falls off on its own.</p>
+          </div>
+        </div>
+        <p id="meter" class="meter">No passes yet.</p>
+        <button id="reset" class="button quiet" type="button">Reset everything to defaults</button>
       </section>
 
       <footer class="foot">
