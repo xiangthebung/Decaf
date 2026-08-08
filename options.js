@@ -452,7 +452,11 @@
     $("intro-dismiss").addEventListener("click", () => {
       save({ seenIntro: true }).catch(() => toast("That change could not be saved."));
     });
-    chrome.storage.onChanged.addListener(() => {
+    // Settings only: `clockSeen` and `lockBaseline` are bookkeeping this screen
+    // never shows, and the worker rewrites the first on every run. See popup.js.
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      if (!Object.keys(changes).some((key) => Object.hasOwn(D.DEFAULT_SETTINGS, key))) return;
       refresh().catch(() => {});
     });
     ticker = setInterval(() => {
