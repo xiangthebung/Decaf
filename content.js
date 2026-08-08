@@ -400,7 +400,14 @@
    * title, the boot blank and the route watcher. Masking and grayscale run
    * everywhere, because they are per-document by nature.
    */
-  const isTopFrame = (() => {
+  /*
+   * `let`, not `const`, only so the DOM tests can stand in for a subframe:
+   * jsdom's `window.top` is non-configurable, so the comparison below cannot be
+   * faked from outside, and its iframes have no URL of their own to route on.
+   * Set through `__decaf`, which lives in the isolated world and is unreachable
+   * from the page. The browser tests use a real frame.
+   */
+  let isTopFrame = (() => {
     try {
       return window.top === window;
     } catch (_) {
@@ -1962,7 +1969,31 @@
     for (const element of document.querySelectorAll(".decaf-game-board")) {
       if (!wanted) element.classList.remove("decaf-game-board");
     }
-    if (!wanted || !hasLayout()) return;
+    if (!wanted) return;
+    /*
+     * A frame whose whole job is the game is the board.
+     *
+     * LinkedIn serves the playable board in an iframe, and the markup there is
+     * not the launch page's: the named selector misses, and the shape search can
+     * miss too. Nothing was then exempt, so the crowns were drained along with
+     * everything else — and a gold crown and a pastel cell differ by about
+     * 1.2:1 in luminance, which is to say they are told apart by hue and nothing
+     * else. Grayscale removes exactly that, so the crowns did not dim, they
+     * vanished, on a board still showing all its colours.
+     *
+     * The reasoning that drains the rest of a games page does not apply in here.
+     * There is no nav in this frame, no leaderboard, no streak artwork — it is
+     * the game, so all of it keeps its colour. Checked before `hasLayout`,
+     * because this needs no measurement.
+     */
+    if (!isTopFrame && document.body) {
+      if (!document.body.classList.contains("decaf-game-board")) {
+        document.body.classList.add("decaf-game-board");
+        clearBadgesOn(document.body);
+      }
+      return;
+    }
+    if (!hasLayout()) return;
     const main = document.querySelector("main") || document.body;
     if (!main || main.querySelector(".decaf-game-board")) return;
 
@@ -2517,6 +2548,9 @@
     // jsdom cannot dispatch a trusted event, so a test standing in for a person
     // says so here. See `fromPerson`.
     trustSynthetic: (value = true) => { trustSynthetic = Boolean(value); },
+    // See `isTopFrame`. Re-applies, because the frame's identity changes what
+    // the surfaces should be.
+    setTopFrame: (value) => { isTopFrame = Boolean(value); apply(); },
     state: () => ({ site, route, active, hidingFeed, colorGranted, settings, isTopFrame })
   };
 })();

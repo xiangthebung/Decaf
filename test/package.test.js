@@ -293,11 +293,28 @@ test("a game's board keeps its colour, and nothing else on the page does", () =>
 
   const rules = cssRules(contentCss);
   const spares = rules.filter((rule) => rule.selectors.some((s) => s.includes(".decaf-game-board")));
-  assert.equal(spares.length, 1, "exactly one rule spares the board");
-  assert.match(spares[0].body, /filter:\s*none/, "the board keeps its colour");
-  assert.match(spares[0].body, /transform:\s*none/, "the board is never turned over");
-  for (const selector of spares[0].selectors) {
-    assert.match(selector, /^html\.decaf-game /, `"${selector}" must only apply on a game route`);
+  assert.ok(spares.length, "something has to spare the board");
+  for (const rule of spares) {
+    for (const selector of rule.selectors) {
+      assert.match(selector, /^html\.decaf-game /, `"${selector}" must only apply on a game route`);
+    }
+  }
+
+  const bodies = spares.map((rule) => rule.body).join("\n");
+  assert.match(bodies, /filter:\s*none/, "the board keeps its colour");
+  assert.match(bodies, /transform:\s*none/, "the board is never turned over");
+
+  /*
+   * Undoing the flip is a separate, narrower rule than undoing the drain, and it
+   * has to stay that way. Decaf only ever turns over `:is(img, video)`, so those
+   * are the only things whose transform it may reset; resetting `svg` as well
+   * meant overriding whatever the site had put there itself, on boards whose
+   * pieces are inline SVG placed by transform.
+   */
+  const flip = spares.find((rule) => /transform:\s*none/.test(rule.body));
+  for (const selector of flip.selectors) {
+    assert.doesNotMatch(selector, /svg|canvas/,
+      `"${selector}" resets a transform Decaf never set`);
   }
 
   // Nothing that drains or rotates may carry id-level specificity, or the rule

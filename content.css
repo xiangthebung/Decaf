@@ -124,6 +124,17 @@ html.decaf-upside-down :where(article, main, [role="main"], [role="feed"], #cont
 html.decaf-game .decaf-game-board,
 html.decaf-game .decaf-game-board :is(img, video, canvas, svg) {
   filter: none !important;
+}
+
+/*
+ * Undoing the flip is a separate rule, and narrower on purpose: the only thing
+ * Decaf ever turns over is `:is(img, video)`, so those are the only things whose
+ * transform it has any business resetting. Including `svg` and `canvas` here
+ * meant overriding whatever the site itself had put on them — on a board where
+ * the pieces are inline SVG positioned by transform, that is Decaf moving the
+ * game's own furniture to undo something it never did.
+ */
+html.decaf-game .decaf-game-board :is(img, video) {
   transform: none !important;
 }
 

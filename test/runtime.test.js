@@ -657,3 +657,54 @@ test("nothing on a game board is treated as a notification badge", async () => {
     page.close();
   }
 });
+
+/*
+ * LinkedIn serves the playable board in an iframe whose markup is not the launch
+ * page's, so neither the named selector nor the shape search finds a board in
+ * there. Nothing was exempt, and the crowns were drained with everything else.
+ *
+ * That reads as "the queens disappeared" rather than "the queens went grey"
+ * because a gold crown and a pastel cell differ by roughly 1.2:1 in luminance —
+ * they are told apart by hue and nothing else, and grayscale removes exactly
+ * that. The board kept every one of its colours while the pieces on it vanished.
+ */
+test("a frame that is nothing but the game keeps all of its colour", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/games/view/queens/desktop/",
+    html: `<body><div id="board">
+      <div class="cell"><svg aria-label="Queen"><path d="M2 20h20v2H2z"></path></svg></div>
+      <div class="cell"><svg aria-label="Queen"><path d="M2 20h20v2H2z"></path></svg></div>
+    </div></body>`,
+    topFrame: false
+  });
+  try {
+    await settle(4);
+    assert.equal(page.api.state().route, "game", "the frame's own URL is a game route");
+    assert.equal(page.api.state().isTopFrame, false);
+    assert.equal(
+      page.document.body.classList.contains("decaf-game-board"),
+      true,
+      "the whole frame is the board, so nothing in it is drained"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+/* The top-level games page still drains everything that is not the board. */
+test("the launch page still drains everything but the board", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/games/queens/",
+    html: `<body><main>
+      <section id="queens-game-board"><div class="cell"></div></section>
+      <aside id="leaderboard"><img src="face.png" alt="A face"></aside>
+    </main></body>`
+  });
+  try {
+    await settle(4);
+    assert.equal(page.document.body.classList.contains("decaf-game-board"), false,
+      "the page is not wholesale exempt");
+  } finally {
+    page.close();
+  }
+});
