@@ -163,14 +163,30 @@ test("only the hosts that really are feeds are recognized", () => {
  */
 test("every feed container in core.js is emptied by content.css, and vice versa", () => {
   const EMPTY_SUFFIX = " > *:not(.decaf-notice):not(:has(.decaf-notice))";
+  /*
+   * `main` and `[role='main']` are the whole page on a feed route — and also the
+   * conversation pane inside the Messenger window Facebook docks on every page,
+   * and LinkedIn's message overlay. Emptying one of those took a person's chat
+   * away and left the container behind holding the site's own gradient. The
+   * guard is on the container rather than the child, so a conversation is never
+   * a candidate in the first place. content.js refuses the same regions in
+   * `findFeedAnchors` and `visibleFeedItems`; this keeps the stylesheet, which
+   * empties with no script involved at all, in step with it.
+   */
+  const CHAT_GUARD = ":not([role='dialog'] *):not([aria-label*='message' i] *):not([aria-label*='chat' i] *)";
+  const BROAD = new Set(["main", "[role='main']", "main[role='main']"]);
   const emptied = new Set();
   for (const group of contentCss.matchAll(/html\.decaf-hide-feed\.decaf-site-([a-z]+)\s+([^,{]+)/g)) {
     emptied.add(`${group[1]} ${group[2].trim()}`);
   }
   for (const [key, site] of Object.entries(D.SITES)) {
     for (const selector of site.feedSelectors) {
-      const expected = `${key} ${selector}${EMPTY_SUFFIX}`;
-      assert.ok(emptied.has(expected), `content.css does not empty ${key}: ${selector}`);
+      const guard = BROAD.has(selector) ? CHAT_GUARD : "";
+      const expected = `${key} ${selector}${guard}${EMPTY_SUFFIX}`;
+      assert.ok(
+        emptied.has(expected),
+        `content.css does not empty ${key}: ${selector}${guard ? " (with the conversation guard)" : ""}`
+      );
       emptied.delete(expected);
     }
   }
@@ -277,11 +293,28 @@ test("a game's board keeps its colour, and nothing else on the page does", () =>
 
   const rules = cssRules(contentCss);
   const spares = rules.filter((rule) => rule.selectors.some((s) => s.includes(".decaf-game-board")));
-  assert.equal(spares.length, 1, "exactly one rule spares the board");
-  assert.match(spares[0].body, /filter:\s*none/, "the board keeps its colour");
-  assert.match(spares[0].body, /transform:\s*none/, "the board is never turned over");
-  for (const selector of spares[0].selectors) {
-    assert.match(selector, /^html\.decaf-game /, `"${selector}" must only apply on a game route`);
+  assert.ok(spares.length, "something has to spare the board");
+  for (const rule of spares) {
+    for (const selector of rule.selectors) {
+      assert.match(selector, /^html\.decaf-game /, `"${selector}" must only apply on a game route`);
+    }
+  }
+
+  const bodies = spares.map((rule) => rule.body).join("\n");
+  assert.match(bodies, /filter:\s*none/, "the board keeps its colour");
+  assert.match(bodies, /transform:\s*none/, "the board is never turned over");
+
+  /*
+   * Undoing the flip is a separate, narrower rule than undoing the drain, and it
+   * has to stay that way. Decaf only ever turns over `:is(img, video)`, so those
+   * are the only things whose transform it may reset; resetting `svg` as well
+   * meant overriding whatever the site had put there itself, on boards whose
+   * pieces are inline SVG placed by transform.
+   */
+  const flip = spares.find((rule) => /transform:\s*none/.test(rule.body));
+  for (const selector of flip.selectors) {
+    assert.doesNotMatch(selector, /svg|canvas/,
+      `"${selector}" resets a transform Decaf never set`);
   }
 
   // Nothing that drains or rotates may carry id-level specificity, or the rule

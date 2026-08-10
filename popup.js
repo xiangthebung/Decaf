@@ -380,7 +380,18 @@
       render();
     });
     $("settings").addEventListener("click", () => chrome.runtime.openOptionsPage());
-    chrome.storage.onChanged.addListener(() => {
+    /*
+     * Only settings redraw this. `clockSeen` is bookkeeping the worker rewrites
+     * on every run of `sync`, and `lockBaseline` is internal to the Lock — and a
+     * refresh is not free: it re-reads storage, queries the active tab, and asks
+     * that tab's content script whether it actually found a feed. Reacting to
+     * every key meant a routine worker wake queued a round trip to a page that
+     * may be busy, for a change no part of this screen shows. background.js
+     * filters the same key for the same reason.
+     */
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== "local") return;
+      if (!Object.keys(changes).some((key) => Object.hasOwn(D.DEFAULT_SETTINGS, key))) return;
       refresh().catch(() => {});
     });
     ticker = setInterval(() => {

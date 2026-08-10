@@ -233,7 +233,14 @@ async function until(predicate, { timeout = 2000, interval = 10 } = {}) {
 const PAGE = `<!doctype html><html><head><title>Test page</title></head><body></body></html>`;
 
 /** Boots core.js + content.js against a jsdom page, exactly as Chrome would. */
-async function launchPage({ url, storage = {}, html = PAGE, deferGet = false, trustEvents = true } = {}) {
+async function launchPage({
+  url,
+  storage = {},
+  html = PAGE,
+  deferGet = false,
+  trustEvents = true,
+  topFrame = true
+} = {}) {
   const dom = new JSDOM(html, { url, runScripts: "outside-only", pretendToBeVisual: true });
   const { window } = dom;
   window.chrome = createChrome({ storage, deferGet });
@@ -243,6 +250,9 @@ async function launchPage({ url, storage = {}, html = PAGE, deferGet = false, tr
   // is one. A test standing in for a person says so; a test proving the guard
   // works calls `api.trustSynthetic(false)` first.
   if (trustEvents) window.__decaf?.trustSynthetic(true);
+  // jsdom's window.top cannot be redefined and its iframes have no URL of their
+  // own, so a subframe is stood in for through the same isolated-world hook.
+  if (!topFrame) window.__decaf?.setTopFrame(false);
   await settle();
   return {
     dom,

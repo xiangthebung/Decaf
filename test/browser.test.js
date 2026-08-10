@@ -525,3 +525,73 @@ test("the feed selectors match the sites as they ship today", { skip: skipLive }
     process.stdout.write(`# verified: ${verified.join(", ")}\n# inconclusive: ${inconclusive.join("; ")}\n`);
   }
 });
+
+/*
+ * The conversation guard, checked where it actually lives.
+ *
+ * This has to be a browser test and cannot be a jsdom one: the emptying is done
+ * entirely by content.css, the jsdom harness never loads that stylesheet, and
+ * jsdom does not implement `:has()` — which the emptying rule depends on. A
+ * jsdom test written for this passed identically with the guard reverted, which
+ * is worth more as a warning than the test was as a test.
+ *
+ * Facebook docks a Messenger window on every page, and its conversation pane is
+ * a `role="main"` of its own, so `[role='main'] > *` reached in and hid every
+ * message — leaving the container behind holding Messenger's own gradient.
+ */
+const MESSENGER_DOCK = `<!doctype html>
+<html><head><title>Facebook</title></head><body>
+  <header id="masthead"><input id="site-search" type="search"></header>
+  <div role="main" id="page-main">
+    <div role="feed" id="feed">
+      <div role="article" class="post" id="post1">A post</div>
+      <div role="article" class="post" id="post2">Another post</div>
+      <div role="article" class="post" id="post3">A third post</div>
+    </div>
+  </div>
+  <div role="dialog" aria-label="Chat with Denise" id="dock">
+    <div id="dock-head">Denise</div>
+    <div role="main" id="dock-main">
+      <div role="article" class="msg" id="m1">Is it still available?</div>
+      <div role="article" class="msg" id="m2">Yes, it is.</div>
+    </div>
+    <div id="dock-composer"><input aria-label="Aa"></div>
+  </div>
+</body></html>`;
+
+test("a docked conversation survives a paused feed", { skip: skipFixture }, async () => {
+  let session = null;
+  try {
+    session = await launch();
+    const { context } = session;
+    const origin = "https://www.facebook.com";
+    await serveFixture(context, origin, MESSENGER_DOCK);
+
+    const page = await context.newPage();
+    await page.goto(`${origin}/`);
+    await page.locator(".decaf-notice").waitFor({ state: "visible" });
+
+    // The feed really is paused — otherwise this proves nothing.
+    assert.equal(await page.locator("#post1").isVisible(), false, "the feed is emptied");
+    assert.equal(await page.locator("#page-main").isVisible(), true, "the page's own main keeps its place");
+    assert.equal(
+      await page.evaluate(() => Boolean(document.querySelector(".decaf-notice").closest("#page-main"))),
+      true,
+      "and the card is in it"
+    );
+
+    // And the conversation is completely untouched.
+    assert.equal(await page.locator("#m1").isVisible(), true, "the message is still there");
+    assert.equal(await page.locator("#m2").isVisible(), true);
+    assert.equal(await page.locator("#dock-head").isVisible(), true);
+    assert.equal(await page.locator("#dock-composer").isVisible(), true);
+    assert.equal(
+      await page.evaluate(() => document.querySelector(".decaf-notice").closest("#dock")),
+      null,
+      "and the card did not land inside it"
+    );
+  } finally {
+    await session?.context.close();
+    if (session) fs.rmSync(session.profile, { recursive: true, force: true });
+  }
+});

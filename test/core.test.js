@@ -71,6 +71,22 @@ test("routes separate endless feeds from things opened on purpose", () => {
     // One reel someone sent you, matching how Instagram's /reel/<id> is read.
     ["https://www.facebook.com/reel/123", "media"],
     ["https://www.facebook.com/marketplace/", "feed"],
+    ["https://www.facebook.com/marketplace/category/vehicles", "feed"],
+    ["https://www.facebook.com/marketplace/109502275730/vehicles", "feed"],
+    /*
+     * Everything else under /marketplace. A prefix rule swept all of these into
+     * `feed`, so Decaf emptied the Marketplace inbox, an open conversation with
+     * a buyer, and a listing someone had opened on purpose. A conversation is
+     * never a feed — the README says so and now the table does too.
+     */
+    ["https://www.facebook.com/marketplace/inbox", "content"],
+    ["https://www.facebook.com/marketplace/inbox/1234567890/", "content"],
+    ["https://www.facebook.com/marketplace/you/selling", "content"],
+    ["https://www.facebook.com/marketplace/you/buying", "content"],
+    ["https://www.facebook.com/marketplace/notifications", "content"],
+    ["https://www.facebook.com/marketplace/saved", "content"],
+    ["https://www.facebook.com/marketplace/search/?query=bike", "content"],
+    ["https://www.facebook.com/marketplace/item/123456/", "media"],
     ["https://www.facebook.com/groups/feed/", "feed"],
     ["https://www.facebook.com/messages/t/", "content"],
     ["https://www.facebook.com/someone/videos/123", "media"],

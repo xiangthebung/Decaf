@@ -128,8 +128,10 @@ test("a bare number that belongs to no control survives", async () => {
     url: "https://www.linkedin.com/feed/update/urn:li:activity:1/",
     html: `<body><main>
       <div class="feed-shared-update-v2">
-        <div class="feed-shared-inline-show-more-text"><span class="feed-shared-text" id="year">2019</span></div>
-        <div class="feed-shared-text"><span id="figure">1,299</span></div>
+        <div class="feed-shared-inline-show-more-text">
+          <span class="feed-shared-text" id="body">Opened Berlin in <span id="year">2019</span>,
+            now <span id="figure">1,299</span> people.</span>
+        </div>
         <button class="react-button" aria-label="Like"><span id="count">842</span></button>
       </div>
     </main></body>`
@@ -373,6 +375,335 @@ test("running content.js twice in one world does nothing the second time", async
 
     assert.equal(page.api, first, "the first copy is still the owner");
     assert.equal(page.document.querySelectorAll(".decaf-notice").length, 1, "one card, not two");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * Facebook docks a Messenger window on every page, including the feed routes
+ * where Decaf is emptying things — and Messenger's conversation pane is a
+ * `role="main"` of its own. The page-level selector reached straight into it and
+ * hid every message, leaving the container behind holding Messenger's own
+ * gradient: three chat windows showing a block of colour where the conversation
+ * had been. "A conversation is not a feed, and Decaf should never come between
+ * you and a message" was a route rule and nothing else; it is a structural
+ * guarantee now, so no future mistake in the route table can reach past it.
+ */
+test("a docked conversation is never emptied, even on a paused feed", async () => {
+  const page = await launchPage({
+    url: "https://www.facebook.com/",
+    html: `<!doctype html><html><body>
+      <div id="shell">
+        <div role="main" id="page-main">
+          <div role="feed" id="feed">
+            <div role="article" class="post">A post</div>
+            <div role="article" class="post">Another post</div>
+            <div role="article" class="post">A third post</div>
+          </div>
+        </div>
+      </div>
+      <div role="dialog" aria-label="Chat with Denise" id="dock">
+        <div id="dock-head">Denise</div>
+        <div role="main" id="dock-main">
+          <div role="article" class="msg" id="m1">Is it still available?</div>
+          <div role="article" class="msg" id="m2">Yes, it is.</div>
+        </div>
+        <div id="dock-composer"><input aria-label="Aa"></div>
+      </div>
+    </body></html>`
+  });
+  try {
+    await until(() => page.api.notice());
+    assert.equal(page.api.state().hidingFeed, true, "the feed itself is still paused");
+
+    // Only the content script's half is checked here. The emptying is done by
+    // content.css, which this harness does not load and whose `:has()` jsdom
+    // does not implement — a version of this test that asserted the messages
+    // were still displayed passed exactly the same with the fix reverted. The
+    // stylesheet's half is "a docked conversation survives a paused feed" in
+    // test/browser.test.js, which fails without it.
+    assert.equal(
+      page.api.anchors().some((element) => element.closest("#dock")),
+      false,
+      "the conversation is never a candidate to be emptied"
+    );
+    const notice = page.document.querySelector(".decaf-notice");
+    assert.equal(notice.closest("#dock"), null, "and the card did not land in it");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * The same guarantee from the other direction: `enforceEmptyFeed` looks for feed
+ * items still on screen and empties whatever holds them. Messages carry
+ * `[role='article']` too, so on a page where the real feed was already dealt
+ * with, the only "leftovers" it could find were the messages in the dock — and
+ * it would have emptied the conversation to satisfy itself.
+ */
+test("messages are not mistaken for a feed the pause missed", async () => {
+  const page = await launchPage({
+    url: "https://www.facebook.com/",
+    html: `<!doctype html><html><body>
+      <div role="main" id="page-main"><div role="feed" id="feed"></div></div>
+      <div role="dialog" aria-label="Chat with Denise" id="dock">
+        <div role="article" class="msg" id="m1">One</div>
+        <div role="article" class="msg" id="m2">Two</div>
+        <div role="article" class="msg" id="m3">Three</div>
+        <div role="article" class="msg" id="m4">Four</div>
+      </div>
+    </body></html>`
+  });
+  try {
+    await settle(8);
+    for (const id of ["m1", "m2", "m3", "m4"]) {
+      const element = page.document.getElementById(id);
+      assert.equal(page.window.getComputedStyle(element).display !== "none", true, id);
+    }
+    assert.equal(
+      page.document.querySelectorAll("#dock .decaf-feed-container, #dock.decaf-feed-container").length,
+      0,
+      "no part of the conversation was marked as a feed"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * TikTok hangs each count off its icon button as a *sibling*, not a child:
+ *   <button data-e2e="like-icon">…</button><strong data-e2e="like-count">7064</strong>
+ * so there is no control around the number. Requiring one — which is what keeps
+ * a year inside a LinkedIn post from becoming a dash — left every count on a
+ * TikTok video showing. A live audit found fourteen of them on one page.
+ *
+ * Two things now cover it: the site's own `data-e2e` hook, which is the same in
+ * every language TikTok ships, and the general rule that a site naming something
+ * a count is evidence enough on its own.
+ */
+test("a count the site names is masked even with no control around it", async () => {
+  const page = await launchPage({
+    url: "https://www.tiktok.com/@someone/video/7123",
+    html: `<body><main>
+      <div class="action-bar">
+        <button data-e2e="like-icon"></button><strong data-e2e="like-count" id="likes">7064</strong>
+        <button data-e2e="comment-icon"></button><strong data-e2e="comment-count" id="comments">3924</strong>
+        <button data-e2e="undefined-icon"></button><strong data-e2e="undefined-count" id="shares">21.9K</strong>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    for (const id of ["likes", "comments", "shares"]) {
+      assert.equal(page.document.getElementById(id).textContent, "—", id);
+    }
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * And the LinkedIn case the control requirement exists for still holds.
+ *
+ * The fixture here used to be `<span class="feed-shared-text">2019</span>` — a
+ * bare year as the entire content of the post-body element. That shape is now
+ * masked, and deliberately: it is indistinguishable from TikTok's `DivLikeInfo`,
+ * which is a reward word on an element holding nothing but a number, and TikTok
+ * ships fifteen of those on every video page against a LinkedIn post whose whole
+ * body is a single bare number. The realistic shape — prose with numbers in it —
+ * is what the rule protects, and it is what this asserts.
+ */
+test("naming a count does not re-open the door to masking post content", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/feed/update/urn:li:activity:1/",
+    html: `<body><main>
+      <div class="feed-shared-update-v2">
+        <div class="feed-shared-text" id="body">Hired <span id="hires">12</span> people in 2019.</div>
+        <span class="social-details-social-counts__reactions-count" id="reactions">842</span>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("hires").textContent, "12", "a figure in prose is not a count");
+    assert.equal(page.document.getElementById("reactions").textContent, "—", "one the site names is");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * The two cases that pull in opposite directions, side by side.
+ *
+ * TikTok's related-video counts live in `class="...DivLikeInfo..."` with no
+ * control anywhere near them — read off the live site, not guessed at. LinkedIn's
+ * post body is `class="feed-shared-text"`, which contains "share" for reasons
+ * that have nothing to do with a share count. The element's own class cannot
+ * separate them; what does is that one holds a number and nothing else, and the
+ * other holds prose that happens to contain a year.
+ */
+test("a dedicated count element is masked, a post body is not", async () => {
+  const page = await launchPage({
+    url: "https://www.tiktok.com/@someone/video/7123",
+    html: `<body><main>
+      <div class="css-10epprg-DivContentContainer">
+        <div class="css-9ulrvj-DivOtherInfo">
+          <div class="css-10epprg-DivLikeInfo" id="tiktok-likes">3927</div>
+        </div>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("tiktok-likes").textContent, "—", "TikTok's like count goes");
+  } finally {
+    page.close();
+  }
+});
+
+test("a post body naming itself shared keeps its numbers", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/feed/update/urn:li:activity:1/",
+    html: `<body><main>
+      <div class="feed-shared-update-v2">
+        <div class="feed-shared-text" id="body">We opened the Berlin office in <span id="year">2019</span>
+          and have grown to <span id="staff">1,299</span> people since.</div>
+      </div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("year").textContent, "2019", "a year in prose survives");
+    assert.equal(page.document.getElementById("staff").textContent, "1,299", "so does a figure in prose");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * Bounding REWARD_CONTEXT stopped `view` matching `preview`, and had to. But
+ * `[^a-z]` under an `i` flag excludes capitals too, so it also blinded Decaf to
+ * every camelCase name — and TikTok labels each count on a video page with a
+ * styled-component class, `css-10epprg--DivLikeInfo`. Fourteen counts a page
+ * survived, and the live audit is the only thing that saw it: every unit test
+ * used hyphenated or lowercase fixtures.
+ */
+test("a count named in camelCase is found, and preview still is not", async () => {
+  const page = await launchPage({
+    url: "https://www.tiktok.com/@someone/video/7123",
+    html: `<body><main>
+      <div class="css-10epprg-7937d88b--DivLikeInfo e11ypioz14" id="tiktok">3927</div>
+      <div class="DivViewCount" id="views">130.4K</div>
+      <div class="previewIndex" id="preview">3</div>
+      <div class="overviewTotal" id="overview">7</div>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle();
+    assert.equal(page.document.getElementById("tiktok").textContent, "—", "DivLikeInfo is a like count");
+    assert.equal(page.document.getElementById("views").textContent, "—", "so is DivViewCount");
+    assert.equal(page.document.getElementById("preview").textContent, "3", "previewIndex is not a view count");
+    assert.equal(page.document.getElementById("overview").textContent, "7", "nor is overviewTotal");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * A Queens cell meets every test Decaf has for a notification badge, and does so
+ * honestly: 45x45, one crown inside it, no text, and painted a strong colour —
+ * because on Queens the colour *is* the puzzle. The board is already exempt from
+ * the grayscale, but the badge mark is a separate treatment, and "Hide
+ * notification counts" turns it into `display: none`: crowns and regions both
+ * gone. Read off the live board, including the cell colour.
+ */
+test("nothing on a game board is treated as a notification badge", async () => {
+  const cell = (index) =>
+    `<div role="button" class="cell" style="width:45px;height:45px;background:rgb(230,243,136)">
+       <svg aria-label="Queen" width="24" height="24"><path d="M2 20h20v2H2z"></path></svg>
+     </div>`.replace("cell", `cell c${index}`);
+  const page = await launchPage({
+    url: "https://www.linkedin.com/games/queens/",
+    html: `<body><main>
+      <section id="queens-game-board">${[0, 1, 2, 3].map(cell).join("")}</section>
+      <nav><a href="/notifications"><span class="badge" style="background:rgb(220,40,40)">3</span></a></nav>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle(4);
+    // The board is not marked here: `syncGameBoard` measures cells, and this
+    // harness has no layout. That is the point — the guard has to hold on the
+    // named board before anything has been measured, because the badge pass runs
+    // first. A board found by shape is caught afterwards by `clearBadgesOn`,
+    // which needs a real browser to exercise.
+    assert.equal(
+      page.document.querySelectorAll("#queens-game-board .decaf-badge").length,
+      0,
+      "no part of the board is marked as a badge"
+    );
+    // The queens themselves are still there, whatever the badge setting says.
+    assert.equal(page.document.querySelectorAll("#queens-game-board svg[aria-label='Queen']").length, 4);
+    // And a real badge outside the board is still found, so this is an exemption
+    // rather than the badge finder having been broken.
+    assert.equal(page.document.querySelectorAll("nav .decaf-badge").length, 1, "a real badge still goes");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * LinkedIn serves the playable board in an iframe whose markup is not the launch
+ * page's, so neither the named selector nor the shape search finds a board in
+ * there. Nothing was exempt, and the crowns were drained with everything else.
+ *
+ * That reads as "the queens disappeared" rather than "the queens went grey"
+ * because a gold crown and a pastel cell differ by roughly 1.2:1 in luminance —
+ * they are told apart by hue and nothing else, and grayscale removes exactly
+ * that. The board kept every one of its colours while the pieces on it vanished.
+ */
+test("a frame that is nothing but the game keeps all of its colour", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/games/view/queens/desktop/",
+    html: `<body><div id="board">
+      <div class="cell"><svg aria-label="Queen"><path d="M2 20h20v2H2z"></path></svg></div>
+      <div class="cell"><svg aria-label="Queen"><path d="M2 20h20v2H2z"></path></svg></div>
+    </div></body>`,
+    topFrame: false
+  });
+  try {
+    await settle(4);
+    assert.equal(page.api.state().route, "game", "the frame's own URL is a game route");
+    assert.equal(page.api.state().isTopFrame, false);
+    assert.equal(
+      page.document.body.classList.contains("decaf-game-board"),
+      true,
+      "the whole frame is the board, so nothing in it is drained"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+/* The top-level games page still drains everything that is not the board. */
+test("the launch page still drains everything but the board", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/games/queens/",
+    html: `<body><main>
+      <section id="queens-game-board"><div class="cell"></div></section>
+      <aside id="leaderboard"><img src="face.png" alt="A face"></aside>
+    </main></body>`
+  });
+  try {
+    await settle(4);
+    assert.equal(page.document.body.classList.contains("decaf-game-board"), false,
+      "the page is not wholesale exempt");
   } finally {
     page.close();
   }

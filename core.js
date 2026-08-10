@@ -201,13 +201,29 @@
       // www, web, m, mbasic and locale subdomains such as en-gb
       hostPattern: /^(?:(?:www|web|m|mbasic|[a-z]{2}-[a-z]{2})\.)?facebook\.com$/,
       feedSummary: "News Feed, Reels, Watch, Marketplace",
+      /*
+       * Marketplace is named surface by surface rather than by its prefix.
+       *
+       * `/marketplace(/|$)` looked like the whole of Marketplace and was in fact
+       * the whole of it: `/marketplace/inbox`, an individual conversation at
+       * `/marketplace/inbox/<id>`, `/marketplace/you/selling` and a listing
+       * permalink at `/marketplace/item/<id>` were all read as an endless feed
+       * and emptied. Someone answering a buyer lost the conversation. Decaf is
+       * not allowed to come between anyone and a message, so what counts as the
+       * Marketplace feed is listed rather than assumed, and anything unlisted
+       * falls through to `content` — a surface Decaf leaves alone is a far
+       * cheaper mistake than a conversation it empties.
+       */
       isFeed: ({ path }) =>
         path === "/" ||
         path === "/home.php" ||
         /^\/reels?(\/|$)/.test(path) ||
         /^\/watch(\/|$)/.test(path) ||
         /^\/groups\/feed(\/|$)/.test(path) ||
-        /^\/marketplace(\/|$)/.test(path),
+        /^\/marketplace\/?$/.test(path) ||
+        /^\/marketplace\/categor(?:y|ies)\/[^/]+/.test(path) ||
+        // The browse surface for a place: /marketplace/109502275730/vehicles
+        /^\/marketplace\/\d+\/[^/]+/.test(path),
       /*
        * `/watch/?v=<id>` is the permalink every shared Facebook video and every
        * fb.watch link lands on, and the path alone cannot tell it apart from the
@@ -218,6 +234,7 @@
       isMedia: ({ path, search }) =>
         (/^\/watch(\/|$)/.test(path) && Boolean(param(search, "v"))) ||
         /^\/(photo|photo\.php|permalink\.php|story\.php|share)(\/|$)/.test(path) ||
+        /^\/marketplace\/item\/[^/]+/.test(path) ||
         /\/(videos|posts|reel)\/[^/]+/.test(path),
       feedSelectors: ["[role='feed']", "[data-pagelet='MainFeed']", "[role='main']"]
     },

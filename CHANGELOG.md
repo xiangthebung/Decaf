@@ -7,6 +7,20 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **Reward counts written in camelCase are masked again.** Bounding the reward words so `view` stopped matching `preview` also blinded Decaf to every name written in camelCase — which is how styled-components name things. TikTok labels each count on a video page that way, and fourteen of them a page were left showing. Only the live audit saw it: every unit test used hyphenated or lowercase class names.
+
+- **Decaf no longer empties a conversation.** Facebook's Marketplace was matched
+  by its whole path prefix, which also covers the Marketplace inbox, an open
+  conversation with a buyer, and a listing you opened on purpose — all read as
+  endless feeds and emptied. Separately, and for longer, the docked Messenger
+  window sits on top of every Facebook page including the feed, and its
+  conversation pane is a `role="main"` of its own, so the page-level selector
+  reached in and hid every message: what was left was the window's own
+  background gradient where the chat had been. Marketplace is now named surface
+  by surface, and — so that no future mistake in the route table can do this
+  again — anything that announces itself as a dialog, a chat or a conversation
+  is refused as a feed container and never counted as holding feed items.
+
 - **A copy of Decaf that outlives its extension now takes itself down.** When an
   extension is reloaded, updated or removed, Chrome leaves its content scripts
   running in every open tab with dead APIs. That zombie kept enforcing whatever

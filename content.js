@@ -216,8 +216,28 @@
     // Facebook's comment and share counts are bare numbers in unnamed buttons,
     // with the icon drawn in CSS. A button whose whole text is a number is a
     // counter; a button with words in it keeps them.
-    facebook: "[role='button']"
+    facebook: "[role='button']",
+    /*
+     * TikTok writes each count in a `<strong>` that is a *sibling* of its icon
+     * button rather than inside it, so there is no control around the number and
+     * nothing above it says what it is except this attribute. A structural hook
+     * is the right answer for it anyway: `data-e2e` is the same in every
+     * language TikTok ships, where the prose Decaf otherwise reads is not.
+     */
+    tiktok: "[data-e2e$='-count'],[data-e2e$='-count-container']"
   };
+
+  /**
+   * An element the site itself names as a count — `data-e2e="like-count"`,
+   * `class="view-count"`.
+   *
+   * This is deliberately narrower than REWARD_CONTEXT on its own. A reward word
+   * anywhere in an ancestor's classes is what made LinkedIn's `feed-shared-text`
+   * look like a share counter and turned a year inside a post into a dash. The
+   * word "count" alongside it is the site saying so on purpose, which is
+   * evidence enough to mask a number that belongs to no control.
+   */
+  const NAMED_COUNT = /count/i;
 
   function countElementSelector() {
     const extra = SITE_COUNT_ELEMENTS[site];
@@ -235,6 +255,46 @@
    */
   const OWN_ATTRIBUTE = "data-decaf-own";
   const OURS = `[${OWN_ATTRIBUTE}]`;
+
+  /**
+   * Surfaces Decaf may never empty, treat as a feed, or count feed items inside,
+   * whatever the route says.
+   *
+   * "Messaging apps are deliberately out of scope. A conversation is not a feed,
+   * and Decaf should never come between you and a message." That was written as
+   * a route rule and nothing else, which left it true only for as long as every
+   * route rule was right. It was not: Facebook's Marketplace prefix swept in
+   * `/marketplace/inbox`, and the page-level `[role='main']` selector reaches
+   * into the Messenger window Facebook docks on *every* page — including the
+   * home feed, where the promise had quietly never held. Emptying that window
+   * leaves its container behind holding Messenger's own gradient, which is what
+   * a person sees instead of their conversation.
+   *
+   * So the promise is a structural guarantee now: a region that announces itself
+   * as a conversation, a chat or a dialog is off limits at the point Decaf
+   * decides what to touch, and no future mistake in the route table can reach
+   * past it. Named by role and accessible name rather than by class, because
+   * those are what these sites keep stable — and a false positive here costs a
+   * feed Decaf failed to pause, which is the safe direction.
+   */
+  const PROTECTED_SELECTOR = [
+    "[role='dialog']",
+    "[role='alertdialog']",
+    "[aria-label*='messenger' i]",
+    "[aria-label*='message' i]",
+    "[aria-label*='chat' i]",
+    "[aria-label*='conversation' i]",
+    "[data-pagelet*='Message' i]",
+    "[data-pagelet*='Chat' i]",
+    "#msg-overlay",
+    ".msg-overlay-list-bubble"
+  ].join(",");
+
+  /** True for anything inside a conversation, however Decaf arrived at it. */
+  function isProtected(node) {
+    const element = node?.nodeType === Node.ELEMENT_NODE ? node : node?.parentElement;
+    return Boolean(element?.closest?.(PROTECTED_SELECTOR));
+  }
   const ourElements = new WeakSet();
   // What one item in a feed looks like. Used to find a feed whose container Decaf
   // no longer recognizes, and to check afterwards that no item is left showing.
@@ -340,7 +400,14 @@
    * title, the boot blank and the route watcher. Masking and grayscale run
    * everywhere, because they are per-document by nature.
    */
-  const isTopFrame = (() => {
+  /*
+   * `let`, not `const`, only so the DOM tests can stand in for a subframe:
+   * jsdom's `window.top` is non-configurable, so the comparison below cannot be
+   * faked from outside, and its iframes have no URL of their own to route on.
+   * Set through `__decaf`, which lives in the isolated world and is unreachable
+   * from the page. The browser tests use a real frame.
+   */
+  let isTopFrame = (() => {
     try {
       return window.top === window;
     } catch (_) {
@@ -492,7 +559,7 @@
       current = current.parentElement;
       depth += 1;
     }
-    return `${text} ${controlContext(element)}`.replace(/\bdecaf-[\w-]+/g, " ");
+    return readable(`${text} ${controlContext(element)}`.replace(/\bdecaf-[\w-]+/g, " "));
   }
 
   /** The control a number belongs to, if it belongs to one at all. */
@@ -570,14 +637,14 @@
       if (value) text += ` ${value}`;
     }
     const inside = iconLabel(control);
-    if (inside) return `${text} ${inside}`;
+    if (inside) return readable(`${text} ${inside}`);
     let sibling = control.previousElementSibling;
     for (let hops = 0; sibling && hops < 2; hops += 1) {
       const label = iconLabel(sibling);
-      if (label) return `${text} ${label}`;
+      if (label) return readable(`${text} ${label}`);
       sibling = sibling.previousElementSibling;
     }
-    return text;
+    return readable(text);
   }
 
   // A number, optionally with a K/M/B suffix, but never eating the word after it.
@@ -652,9 +719,49 @@
   function isRewardCount(element) {
     if (REWARD_NOUN_FIRST.test(followingText(element))) return true;
     if (REWARD_NOUN_LAST.test(precedingText(element))) return true;
+    /*
+     * A number the site has named a count needs no control around it. TikTok
+     * hangs its counts off the icon button as siblings rather than children, so
+     * requiring a control left every one of them showing — fourteen on a single
+     * video page. Both halves have to match: `like` *and* `count`, on the
+     * element's own attributes, which is what keeps LinkedIn's `feed-shared-text`
+     * from qualifying a year inside a post.
+     */
+    const own = ownContext(element);
+    if (REWARD_CONTEXT.test(own) && (NAMED_COUNT.test(own) || holdsNothingButACount(element))) return true;
     const control = controlAround(element);
     if (!control) return false;
-    return REWARD_CONTEXT.test(controlContext(element)) || REWARD_CONTEXT.test(ownContext(element));
+    return REWARD_CONTEXT.test(controlContext(element)) || REWARD_CONTEXT.test(own);
+  }
+
+  /**
+   * An element that exists to show one number and nothing else.
+   *
+   * This is what separates TikTok's `DivLikeInfo`, whose whole content is
+   * `3927`, from LinkedIn's `feed-shared-text`, which wraps the body of a post
+   * and merely happens to contain the word "shared". Both put a reward word in
+   * their own class, so the class alone cannot tell them apart; what can is that
+   * one of them holds a count and the other holds prose that contains a year.
+   */
+  function holdsNothingButACount(element) {
+    const text = (element.textContent || "").trim();
+    return text.length <= MAX_TEXT_LENGTH && BARE_COUNT.test(text);
+  }
+
+  /**
+   * Puts a space at every camelCase seam, so a bounded word match can see the
+   * words inside a run-together name: `DivLikeInfo` becomes `Div Like Info`.
+   *
+   * Bounding REWARD_CONTEXT is what stopped `view` matching `preview` and
+   * `overview`, and it has to stay. But `[^a-z]` under an `i` flag excludes
+   * capitals as well, so the same change blinded Decaf to every name written in
+   * camelCase — which is how styled-components name things, and how TikTok
+   * labels each of the fourteen counts on a video page. Separating first keeps
+   * both: `Div Like Info` matches, `preview` still does not, because splitting
+   * on capitals never creates a seam inside an all-lowercase word.
+   */
+  function readable(text) {
+    return text.replace(/([\p{Ll}\p{N}])(\p{Lu})/gu, "$1 $2");
   }
 
   /** The element's own attributes, without climbing into its ancestors' classes. */
@@ -664,7 +771,7 @@
       const value = element.getAttribute?.(name);
       if (value) text += ` ${value}`;
     }
-    return text.replace(/\bdecaf-[\w-]+/g, " ");
+    return readable(text.replace(/\bdecaf-[\w-]+/g, " "));
   }
 
   function maskCounts(scope) {
@@ -753,9 +860,29 @@
     return Boolean(element.matches?.("a,button,input,select,textarea,[role='button'],[role='link'],[role='tab'],[role='menuitem']"));
   }
 
+  /*
+   * Nothing on a game board is a notification badge.
+   *
+   * A Queens cell meets every test for one and does so honestly: it is 45x45,
+   * holds a single crown and no text, and is painted a strong colour — because
+   * the colour *is* the puzzle. The board is already exempt from the grayscale,
+   * but the badge mark is a second, separate treatment, and "Hide notification
+   * counts" turns it into `display: none`. That takes the crowns off the board
+   * and the regions with them, which is not a calmer game, it is a broken one.
+   */
+  function onGameBoard(element) {
+    // Both forms, because the two are available at different moments: the named
+    // board can be recognised immediately, while the marked class only exists
+    // after `syncGameBoard` has run — and badges are marked before it, so a
+    // guard that trusted the class alone would be inert on the first pass.
+    return Boolean(element?.closest?.(`${GAME_BOARD_SELECTOR},.decaf-game-board`));
+  }
+
   function markBadge(element) {
+    if (route === "game" && onGameBoard(element)) return;
     const target = paintedBadge(element);
     if (target.classList.contains("decaf-badge")) return;
+    if (route === "game" && onGameBoard(target)) return;
     target.classList.add("decaf-badge");
   }
 
@@ -1007,7 +1134,8 @@
       }
       for (const element of found) matches.add(element);
     }
-    const list = Array.from(matches).filter((element) => element.parentElement);
+    // A conversation is never a feed, whatever the selector table matched.
+    const list = Array.from(matches).filter((element) => element.parentElement && !isProtected(element));
     const outermost = list.filter((element) => !list.some((other) => other !== element && other.contains(element)));
     // Document order, so the notice lands where the feed started.
     outermost.sort((a, b) => (a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1));
@@ -1106,7 +1234,10 @@
   function visibleFeedItems() {
     const selector = feedItemSelector();
     return Array.from(document.querySelectorAll(selector)).filter(
-      (item) => !isOurs(item) && !notice?.contains(item) && isRendered(item)
+      // Messages carry `[role='article']` on some of these sites, so without the
+      // guard `enforceEmptyFeed` would find a conversation's messages, decide
+      // they were the feed it had failed to empty, and empty the conversation.
+      (item) => !isOurs(item) && !isProtected(item) && !notice?.contains(item) && isRendered(item)
     );
   }
 
@@ -1838,13 +1969,38 @@
     for (const element of document.querySelectorAll(".decaf-game-board")) {
       if (!wanted) element.classList.remove("decaf-game-board");
     }
-    if (!wanted || !hasLayout()) return;
+    if (!wanted) return;
+    /*
+     * A frame whose whole job is the game is the board.
+     *
+     * LinkedIn serves the playable board in an iframe, and the markup there is
+     * not the launch page's: the named selector misses, and the shape search can
+     * miss too. Nothing was then exempt, so the crowns were drained along with
+     * everything else — and a gold crown and a pastel cell differ by about
+     * 1.2:1 in luminance, which is to say they are told apart by hue and nothing
+     * else. Grayscale removes exactly that, so the crowns did not dim, they
+     * vanished, on a board still showing all its colours.
+     *
+     * The reasoning that drains the rest of a games page does not apply in here.
+     * There is no nav in this frame, no leaderboard, no streak artwork — it is
+     * the game, so all of it keeps its colour. Checked before `hasLayout`,
+     * because this needs no measurement.
+     */
+    if (!isTopFrame && document.body) {
+      if (!document.body.classList.contains("decaf-game-board")) {
+        document.body.classList.add("decaf-game-board");
+        clearBadgesOn(document.body);
+      }
+      return;
+    }
+    if (!hasLayout()) return;
     const main = document.querySelector("main") || document.body;
     if (!main || main.querySelector(".decaf-game-board")) return;
 
     const named = main.querySelector(GAME_BOARD_SELECTOR);
     if (named) {
       named.classList.add("decaf-game-board");
+      clearBadgesOn(named);
       return;
     }
 
@@ -1864,6 +2020,20 @@
     }
     if (!best) return;
     best.element.classList.add("decaf-game-board");
+    clearBadgesOn(best.element);
+  }
+
+  /**
+   * Takes the badge mark off anything inside a board that has just been found.
+   *
+   * A board found by shape only becomes recognisable once it has been measured,
+   * which happens after the badge pass has already run over it. Marking it is
+   * therefore always one step behind, and this is the step that catches up.
+   */
+  function clearBadgesOn(board) {
+    for (const marked of board.querySelectorAll(".decaf-badge")) {
+      marked.classList.remove("decaf-badge");
+    }
   }
 
   function syncSurfaces() {
@@ -2378,6 +2548,9 @@
     // jsdom cannot dispatch a trusted event, so a test standing in for a person
     // says so here. See `fromPerson`.
     trustSynthetic: (value = true) => { trustSynthetic = Boolean(value); },
+    // See `isTopFrame`. Re-applies, because the frame's identity changes what
+    // the surfaces should be.
+    setTopFrame: (value) => { isTopFrame = Boolean(value); apply(); },
     state: () => ({ site, route, active, hidingFeed, colorGranted, settings, isTopFrame })
   };
 })();

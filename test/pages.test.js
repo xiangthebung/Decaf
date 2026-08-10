@@ -293,3 +293,37 @@ test("settings react to changes made somewhere else", async () => {
     page.close();
   }
 });
+
+/*
+ * A refresh is not free: it re-reads storage, queries the active tab, and asks
+ * that tab's content script whether it really found a feed. `clockSeen` is
+ * bookkeeping the service worker rewrites on every run of `sync`, so reacting to
+ * it queued a round trip to a possibly-busy page for a change no screen shows.
+ * background.js has always filtered the same key; these two had not.
+ */
+test("bookkeeping keys do not redraw the popup", async () => {
+  const page = await launchExtensionPage("popup.html", {
+    tabUrl: "https://www.youtube.com/",
+    tabReply: { anchor: "selector", route: "feed", active: true, hidingFeed: true, placed: true }
+  });
+  try {
+    await settle(4);
+    const asked = () => page.chrome.__calls.messages.filter((entry) => entry.tabId !== undefined).length;
+    const before = asked();
+
+    await page.chrome.storage.local.set({ [D.CLOCK_SEEN_KEY]: Date.now() });
+    await settle(4);
+    assert.equal(asked(), before, "the clock high-water mark redraws nothing");
+
+    await page.chrome.storage.local.set({ [D.LOCK_BASELINE_KEY]: { enabled: true } });
+    await settle(4);
+    assert.equal(asked(), before, "nor does the lock's internal baseline");
+
+    // A real setting still does.
+    await page.chrome.storage.local.set({ pauseFeeds: false });
+    await settle(4);
+    assert.ok(asked() > before, "a setting still redraws it");
+  } finally {
+    page.close();
+  }
+});
