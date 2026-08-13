@@ -97,30 +97,99 @@ const RUNTIME_FILES = [
   'icons/icon-locked128.png',
 ];
 
-async function copyRuntime() {
+/**
+ * Brings the output into line with RUNTIME_FILES without ever taking it apart.
+ *
+ * This directory is not a staging area. It is the extension: everything here
+ * says to point the browser's Load unpacked at dist/, and an unpacked extension
+ * is read from that directory on demand for the whole session rather than copied
+ * into the browser. So the `rm -rf` this build used to open with was deleting a
+ * live extension. For a few milliseconds of every build there was no
+ * manifest.json and no popup.html on disk, and a toolbar click landing in that
+ * window has nothing to open; a manifest read in it can leave the extension
+ * disabled until it is reloaded by hand. Refilling the directory afterwards then
+ * gave all twenty-three files a new mtime whether or not a byte of them had
+ * changed, discarding whatever the browser and the virus scanner had cached and
+ * charging the next popup open for reading the whole extension off disk again.
+ * Both faults only ever showed up right after a change was made, because that is
+ * the only time a build runs.
+ *
+ * So: write only what genuinely differs, write the manifest last so it never
+ * points at a file that has not been written yet, and delete only what no longer
+ * belongs — after the manifest that stopped naming it is already in place.
+ */
+async function syncRuntime() {
+  await mkdir(out, { recursive: true });
+
+  const sources = new Map();
   for (const file of RUNTIME_FILES) {
-    const source = path.join(root, file);
-    const target = path.join(out, file);
-    let data;
     try {
-      data = await readFile(source);
+      sources.set(file, await readFile(path.join(root, file)));
     } catch {
       throw new Error(`build: ${file} is listed in RUNTIME_FILES but does not exist`);
     }
+  }
+
+  let written = 0;
+  const put = async (file) => {
+    const target = path.join(out, file);
+    const data = sources.get(file);
+    let current = null;
+    try {
+      current = await readFile(target);
+    } catch {
+      // Not there yet, so it cannot already match.
+    }
+    if (current?.equals(data)) return;
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, data);
+    written += 1;
+  };
+
+  for (const file of RUNTIME_FILES) {
+    if (file !== 'manifest.json') await put(file);
   }
+  await put('manifest.json');
+
+  const wanted = new Set(RUNTIME_FILES);
+  let removed = 0;
+  for (const name of await listFiles(out)) {
+    if (wanted.has(name)) continue;
+    await rm(path.join(out, name), { force: true });
+    removed += 1;
+  }
+  await pruneEmptyDirectories(out);
+
+  return { written, removed };
 }
 
 /** Every file under `dir`, as forward-slash paths relative to it. */
-async function collect(dir, prefix = '') {
-  const files = [];
+async function listFiles(dir, prefix = '') {
+  const names = [];
   for (const entry of await readdir(dir, { withFileTypes: true })) {
     const name = prefix ? `${prefix}/${entry.name}` : entry.name;
-    if (entry.isDirectory()) files.push(...(await collect(path.join(dir, entry.name), name)));
-    else files.push({ name, data: await readFile(path.join(dir, entry.name)) });
+    if (entry.isDirectory()) names.push(...(await listFiles(path.join(dir, entry.name), name)));
+    else names.push(name);
   }
-  return files;
+  return names;
+}
+
+/** A directory emptied by the prune above is itself no longer part of the build. */
+async function pruneEmptyDirectories(dir) {
+  for (const entry of await readdir(dir, { withFileTypes: true })) {
+    if (!entry.isDirectory()) continue;
+    const child = path.join(dir, entry.name);
+    await pruneEmptyDirectories(child);
+    if ((await readdir(child)).length === 0) await rm(child, { recursive: true, force: true });
+  }
+}
+
+/** Every file under `dir` with its bytes. */
+async function collect(dir) {
+  const names = await listFiles(dir);
+  return Promise.all(
+    names.map(async (name) => ({ name, data: await readFile(path.join(dir, name)) })),
+  );
 }
 
 /**
@@ -221,9 +290,7 @@ async function writeZip(version) {
 }
 
 async function build() {
-  await rm(out, { recursive: true, force: true });
-  await mkdir(out, { recursive: true });
-  await copyRuntime();
+  const { written, removed } = await syncRuntime();
 
   const files = await collect(out);
   await verifyReferences(files);
@@ -238,8 +305,17 @@ async function build() {
   }
 
   const bytes = files.reduce((total, file) => total + file.data.length, 0);
+  /*
+   * What actually moved, not just what is there. In watch mode this is the line
+   * that tells you whether the save you just made reached the extension at all:
+   * "nothing to write" straight after editing popup.js means it did not.
+   */
+  const touched = written || removed
+    ? `${written} written${removed ? `, ${removed} removed` : ''}`
+    : 'nothing to write';
   console.log(
-    `build complete -> ${outLabel}  (${files.length} files, ${(bytes / 1024).toFixed(1)} kB, v${manifest.version})`,
+    `build complete -> ${outLabel}  ` +
+      `(${files.length} files, ${(bytes / 1024).toFixed(1)} kB, v${manifest.version}, ${touched})`,
   );
   return manifest.version;
 }

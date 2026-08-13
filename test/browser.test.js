@@ -402,6 +402,121 @@ test("a Reddit thread is capped, not emptied", { skip: skipFixture }, async () =
 });
 
 /**
+ * An Instagram post page as Instagram actually builds one: the photo sits in
+ * <main> and there is no <article> anywhere on it. The colour rules named
+ * `main article img` for years after that stopped being true, so "Show in color"
+ * on Instagram set a class, withdrew the pill, said the words — and matched
+ * nothing at all.
+ */
+const INSTAGRAM_POST = `<!doctype html>
+<html><head><title>A photo on Instagram</title></head>
+<body>
+  <header id="nav">Instagram</header>
+  <main role="main">
+    <img id="photo" alt="A photo" style="width:320px;height:320px"
+         src="data:image/gif;base64,R0lGODlhAQABAIAAAP8AAAAAACwAAAAAAQABAAACAkQBADs=">
+    <div id="caption">A caption about the photo.</div>
+  </main>
+</body></html>`;
+
+/**
+ * The other way a granted colour never arrives, and the reason a rule naming the
+ * video is not enough on its own: a filter drains everything beneath it, so a
+ * wrapper carrying a background image keeps the video grey, and a poster held in
+ * front of it stays grey over a video that is already in perfect colour. Both
+ * shapes are ordinary — a blurred backdrop behind a vertical video, a still held
+ * until playback starts — and both leave the person looking at a grey page after
+ * pressing a button that reported success.
+ */
+const WRAPPED_VIDEO = `<!doctype html>
+<html><head><title>A video on TikTok</title></head>
+<body>
+  <header id="nav">TikTok</header>
+  <main>
+    <span id="wrap" style="display:block;position:relative;width:300px;height:400px;
+          background-image:url(data:image/gif;base64,R0lGODlhAQABAIAAAP8AAAAAACwAAAAAAQABAAACAkQBADs=)">
+      <video id="player" style="width:300px;height:400px"></video>
+      <img id="poster" alt="" style="position:absolute;inset:0;width:300px;height:400px"
+           src="data:image/gif;base64,R0lGODlhAQABAIAAAP8AAAAAACwAAAAAAQABAAACAkQBADs=">
+    </span>
+  </main>
+</body></html>`;
+
+/**
+ * Colour is granted to a *picture*, not to an element, and the two come apart in
+ * every direction: the rule can name markup a site no longer ships, the drain can
+ * sit on a wrapper above the picture, or on something painted across it. Every
+ * one of those leaves the page grey while `getComputedStyle(video).filter` reads
+ * `none` — which is exactly what the older checks here asked, and why they were
+ * all passing while Instagram had never worked once.
+ *
+ * So this asks the question the person at the screen is asking: is there anything
+ * left between this picture and the window that is still draining it?
+ */
+test("a granted colour reaches the picture, not just the element named", { skip: skipFixture }, async () => {
+  let session = null;
+  const failures = [];
+
+  /** Everything from the picture up to <html> that is still filtered. */
+  const drainedAbove = (page, selector) => page.evaluate((target) => {
+    const element = document.querySelector(target);
+    if (!element) return "absent";
+    const found = [];
+    for (let node = element; node; node = node.parentElement) {
+      const filter = getComputedStyle(node).filter;
+      if (filter && filter !== "none") found.push(`${node.localName}#${node.id || "?"}: ${filter}`);
+    }
+    return found;
+  }, selector);
+
+  try {
+    session = await launch();
+    const { context } = session;
+    await serveFixture(context, "https://www.instagram.com", INSTAGRAM_POST);
+    await serveFixture(context, "https://www.tiktok.com", WRAPPED_VIDEO);
+
+    // 1. A post page whose markup the stylesheet's rule no longer describes.
+    const insta = await context.newPage();
+    insta.on("pageerror", (error) => failures.push(String(error)));
+    await insta.goto("https://www.instagram.com/p/Abc123/");
+    await insta.waitForFunction(() => document.documentElement.classList.contains("decaf-media"));
+    assert.equal(await insta.locator("main article").count(), 0, "the fixture has to have the shape the site has");
+    assert.equal(
+      (await drainedAbove(insta, "#photo")).length, 1,
+      "the photo starts drained, like everything else"
+    );
+
+    await insta.locator(".decaf-pill").click();
+    await insta.waitForFunction(() => document.documentElement.classList.contains("decaf-color"));
+    assert.deepEqual(
+      await drainedAbove(insta, "#photo"), [],
+      "asking for colour on Instagram has to actually show the photo"
+    );
+
+    // 2. A video with a drained wrapper above it and a drained poster across it.
+    const tiktok = await context.newPage();
+    tiktok.on("pageerror", (error) => failures.push(String(error)));
+    await tiktok.goto("https://www.tiktok.com/@someone/video/1234567890");
+    await tiktok.waitForFunction(() => document.documentElement.classList.contains("decaf-media"));
+    await tiktok.locator(".decaf-pill").click();
+    await tiktok.waitForFunction(() => document.documentElement.classList.contains("decaf-color"));
+
+    assert.deepEqual(
+      await drainedAbove(tiktok, "#player"), [],
+      "a wrapper above the video drains the video with it"
+    );
+    assert.deepEqual(
+      await drainedAbove(tiktok, "#poster"), [],
+      "and a poster across it is what the person is actually looking at"
+    );
+    assert.deepEqual(failures, [], "no page errors");
+  } finally {
+    await session?.context.close();
+    if (session) fs.rmSync(session.profile, { recursive: true, force: true });
+  }
+});
+
+/**
  * The selectors in core.js describe real pages, so the only honest way to check
  * them is against real pages. Some sites refuse automated browsers and serve an
  * interstitial instead; that is reported rather than treated as a failure, but at

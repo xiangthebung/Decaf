@@ -7,6 +7,18 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **"Show in color" now shows the picture in colour.** The grant was a list of
+  per-site selectors and nothing else, and a list like that goes quietly out of
+  date: Instagram's post page has had no `<article>` on it for some time, so the
+  two rules naming one matched nothing and asking for colour on Instagram had
+  never once worked. A site you added yourself had no entry at all, and never
+  could have. And even where the rule was right, a filter drains everything
+  beneath it — one wrapper above a video kept the video grey, and a poster frame
+  held in front of it stayed grey over a video already in full colour. All three
+  look identical from where you are sitting: the offer disappears, the page does
+  not change. Decaf now measures the picture on the page in front of you, and
+  shows that one, along with whatever is painted across it.
+
 - **Reward counts written in camelCase are masked again.** Bounding the reward words so `view` stopped matching `preview` also blinded Decaf to every name written in camelCase — which is how styled-components name things. TikTok labels each count on a video page that way, and fourteen of them a page were left showing. Only the live audit saw it: every unit test used hyphenated or lowercase class names.
 
 - **Decaf no longer empties a conversation.** Facebook's Marketplace was matched

@@ -341,6 +341,33 @@
     { right: 96, bottom: 20, classes: ["decaf-pill-aside"] },
     { right: 96, bottom: 96, classes: ["decaf-pill-high", "decaf-pill-aside"] }
   ];
+  /*
+   * What a granted colour is granted *for*: see syncColorMedia.
+   *
+   * Two floors, because one is not enough in either direction. A bound on the
+   * shorter side alone would drop a panorama — 600 by 150 is a picture someone
+   * opened, and a bound tall enough to exclude a rail thumbnail excludes it too.
+   * A bound on area alone lets a long thin strip of site furniture through. Both
+   * together describe the same thing: bigger than the thumbnails and avatars a
+   * page is decorated with, whatever shape it is. A rail thumbnail at 168 by 94
+   * misses on area, an avatar at 150 square misses on area, and a picture on a
+   * page someone opened on purpose clears both by a wide margin.
+   */
+  const MIN_COLOR_MEDIA_SIDE = 100;
+  const MIN_COLOR_MEDIA_AREA = 30000;
+  const COLOR_MEDIA_BUDGET = 600;
+  /** What can *be* the picture. A background image is only ever painted over one. */
+  const COLOR_MEDIA_SELECTOR = "video,img,canvas";
+  /*
+   * ...and what can be painted over it: a poster frame held in front of a video,
+   * a blurred backdrop behind a vertical one. Not `svg`: a play button or a
+   * verified tick sitting on a video is the site's chrome, and chrome stays grey.
+   */
+  const COLOR_COVER_SELECTOR = "video,img,canvas,[style*='background-image']";
+  /** How much of the picture something covers before it counts as over it... */
+  const COLOR_COVER_SHARE = 0.6;
+  /** ...and how much bigger it may be before it is the page behind, not a poster. */
+  const COLOR_COVER_SLACK = 2;
   const ICON_SELECTOR = "svg[aria-label],img[alt]";
   // How far a number may sit inside a control and still be read as its count.
   // Threads nests the number five elements below its like button.
@@ -389,7 +416,8 @@
   const MASKED_ARIA_ATTRIBUTE = "data-decaf-aria";
   const MARK_CLASSES = [
     "decaf-badge", "decaf-feed-container", "decaf-feed-host", "decaf-feed-path",
-    "decaf-comment-list", "decaf-game-board", MASKED_TEXT_CLASS
+    "decaf-comment-list", "decaf-game-board", "decaf-color-media", "decaf-color-path",
+    MASKED_TEXT_CLASS
   ];
 
   /*
@@ -2036,6 +2064,100 @@
     }
   }
 
+  /**
+   * Mark what colour was granted for, and the path between it and the document.
+   *
+   * The grant used to live entirely in a list of per-site selectors in the
+   * stylesheet, and a list like that fails in three ways that all look identical
+   * from the outside — the pill goes, the chip says the words, the page stays
+   * grey:
+   *
+   *   - the markup moves underneath it. Instagram's post page has no <article>
+   *     any more, so `main article img` matched nothing at all and asking for
+   *     colour on Instagram did nothing whatsoever;
+   *   - a site someone added themselves has no entry in the list, and never
+   *     could have one;
+   *   - `filter: none` on the picture cannot undo a filter *above* it. A filter
+   *     drains the whole subtree beneath it, so one drained wrapper — a span
+   *     carrying a background image, say — keeps a video grey however many rules
+   *     name the video itself. What is painted *over* it does the same: a poster
+   *     frame stays grey in front of a video in perfect colour. Both look like a
+   *     button that did nothing, and both pass a test that reads the video's own
+   *     computed filter and finds `none`.
+   *
+   * So the picture is measured here rather than guessed at, and the path above it
+   * is marked as well, because the path is what the colour has to travel through.
+   * The marks say *Decaf's drain does not apply here* rather than painting
+   * `filter: none` over the top of everything: a blur the site itself put on a
+   * wrapper is the site's business, and has to survive being shown in colour.
+   */
+  function syncColorMedia() {
+    const wanted = active && route === "media" && colorGranted;
+    if (!wanted) {
+      for (const element of document.querySelectorAll(".decaf-color-media,.decaf-color-path")) {
+        element.classList.remove("decaf-color-media", "decaf-color-path");
+      }
+      return;
+    }
+    if (!hasLayout()) return;
+    const candidates = colorCandidates();
+    const media = primaryMedia(candidates);
+    if (!media) return;
+    media.element.classList.add("decaf-color-media");
+    for (let above = media.element.parentElement; above && above !== root(); above = above.parentElement) {
+      above.classList.add("decaf-color-path");
+    }
+    for (const candidate of candidates) {
+      if (candidate.element === media.element) continue;
+      if (covers(candidate, media)) candidate.element.classList.add("decaf-color-media");
+    }
+  }
+
+  /** Everything on the page that could be a picture, or could be over one, measured once. */
+  function colorCandidates() {
+    const list = [];
+    let looked = 0;
+    for (const element of document.querySelectorAll(COLOR_COVER_SELECTOR)) {
+      if (looked > COLOR_MEDIA_BUDGET) break;
+      looked += 1;
+      if (isOurs(element)) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      list.push({ element, rect, area: rect.width * rect.height });
+    }
+    return list;
+  }
+
+  /**
+   * The one thing a page someone opened on purpose is about: the largest picture
+   * on it, with a video preferred over a still of any size, because the still
+   * covering a player is that player's poster.
+   */
+  function primaryMedia(candidates) {
+    let best = null;
+    for (const candidate of candidates) {
+      const { element, rect } = candidate;
+      if (Math.min(rect.width, rect.height) < MIN_COLOR_MEDIA_SIDE) continue;
+      if (candidate.area < MIN_COLOR_MEDIA_AREA) continue;
+      if (!element.matches(COLOR_MEDIA_SELECTOR)) continue;
+      const rank = element.localName === "video" ? 1 : 0;
+      if (best && (rank < best.rank || (rank === best.rank && candidate.area <= best.area))) continue;
+      best = { ...candidate, rank };
+    }
+    return best;
+  }
+
+  /** True when something is painted across the picture rather than beside it. */
+  function covers(candidate, media) {
+    if (candidate.area > media.area * COLOR_COVER_SLACK) return false;
+    const over = candidate.rect;
+    const picture = media.rect;
+    const width = Math.min(over.right, picture.right) - Math.max(over.left, picture.left);
+    const height = Math.min(over.bottom, picture.bottom) - Math.max(over.top, picture.top);
+    if (width <= 0 || height <= 0) return false;
+    return (width * height) / media.area >= COLOR_COVER_SHARE;
+  }
+
   function syncSurfaces() {
     // A subframe is part of the page, not a page: it gets the grayscale and the
     // masking, and none of the furniture that must exist once per tab.
@@ -2044,6 +2166,7 @@
     syncPassCounter();
     syncCommentPanel();
     syncGameBoard();
+    syncColorMedia();
   }
 
   /* ------------------------------------------------------------- lifecycle -- */

@@ -82,12 +82,19 @@ html.decaf-on canvas {
  * dropdown, a lightbox, a toast or a sticky player, the overlay stopped being
  * anchored to the viewport and was clipped to the wrapper instead. So this is
  * scoped to the content landmarks, and to elements that hold nothing.
+ *
+ * The two branches that can hold something — a span, an `i` — are the two that
+ * can sit *above* a picture in the tree, and a filter drains everything beneath
+ * it. So a granted colour has to be able to opt them out: `.decaf-color-path` is
+ * a wrapper between the picture and the document, `.decaf-color-media` is a
+ * backdrop or a poster painted across it. Excluded rather than overridden, so
+ * that a blur the site itself put on a wrapper is left exactly where it was.
  */
 html.decaf-on :where(article, main, [role="main"], [role="feed"], [role="article"], #contents, #primary)
-  [style*="background-image"]:empty,
-html.decaf-on a[style*="background-image"]:not(:has(*)),
-html.decaf-on span[style*="background-image"],
-html.decaf-on i[style*="background-image"] {
+  [style*="background-image"]:empty:not(.decaf-color-media, .decaf-color-path),
+html.decaf-on a[style*="background-image"]:not(:has(*)):not(.decaf-color-media, .decaf-color-path),
+html.decaf-on span[style*="background-image"]:not(.decaf-color-media, .decaf-color-path),
+html.decaf-on i[style*="background-image"]:not(.decaf-color-media, .decaf-color-path) {
   filter: grayscale(1) !important;
 }
 
@@ -138,13 +145,39 @@ html.decaf-game .decaf-game-board :is(img, video) {
   transform: none !important;
 }
 
-/* Full color, granted for this page only, for the one thing being watched. */
+/*
+ * Full color, granted for this page only, for the one thing being watched.
+ *
+ * Two halves, and the second is the one that makes it arrive. The list below is
+ * what is known about each site, and it is exact where it is right. The mark is
+ * what content.js measured on the page in front of the person: the largest
+ * picture on it, and anything painted across that picture. A list of selectors
+ * cannot know that Instagram dropped the <article> its entry named, that a site
+ * someone added has no entry at all, or that a wrapper above the video is
+ * draining the whole subtree — and every one of those looks the same from the
+ * outside, which is a button that appears to do nothing. See syncColorMedia.
+ */
+html.decaf-color .decaf-color-media {
+  filter: none !important;
+}
+
+/* Narrower on purpose, exactly as on a game board: Decaf only ever turns over
+   `:is(img, video)`, so those are the only transforms it has any business
+   resetting. */
+html.decaf-color :is(img, video).decaf-color-media {
+  transform: none !important;
+}
+
 html.decaf-color.decaf-site-youtube #movie_player video,
 html.decaf-color.decaf-site-youtube #movie_player .html5-video-container,
 html.decaf-color.decaf-site-youtube .html5-video-player video,
 html.decaf-color.decaf-site-twitch video,
-html.decaf-color.decaf-site-instagram main article img,
-html.decaf-color.decaf-site-instagram main article video,
+/* Instagram had `main article img` and `main article video` here, and an
+   Instagram post page has not had an <article> on it for some time — the same
+   thing tools/fixture-site.js records and syncCommentPanel works around. Two
+   selectors that matched nothing are not replaced with a guess at what the
+   markup is this month: the measured mark above is what shows an Instagram
+   photo or reel in colour now. */
 html.decaf-color.decaf-site-tiktok video,
 html.decaf-color.decaf-site-x [data-testid="tweetPhoto"] img,
 html.decaf-color.decaf-site-x article video,
