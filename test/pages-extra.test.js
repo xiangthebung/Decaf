@@ -218,6 +218,48 @@ test("a site Decaf already covers cannot be added twice", async () => {
   }
 });
 
+/*
+ * The duplicate check ran `getSite` without the settings, so it only ever knew
+ * the twelve sites built in. A site you added yourself went straight past it.
+ */
+test("a site you added yourself cannot be added a second time", async () => {
+  const page = await launchExtensionPage("options.html", {
+    storage: { custom: { "news.ycombinator.com": { label: "Hacker News", enabled: false } } }
+  });
+  try {
+    page.$("add-host").value = "news.ycombinator.com";
+    page.$("add-form").dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await settle(6);
+    assert.equal(page.chrome.__calls.permissions.length, 0, "Chrome is not asked for what it already granted");
+    assert.match(page.$("add-error").textContent, /already/);
+    // What re-adding used to do: write the entry fresh, which switched a site
+    // that had deliberately been turned off back on and reset the name with it.
+    assert.deepEqual(
+      page.chrome.__store.custom?.["news.ycombinator.com"] ?? { label: "Hacker News", enabled: false },
+      { label: "Hacker News", enabled: false },
+      "the entry that was already there is left exactly as it was"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+/* `getSite` already knows these are the same site; the check now knows it too. */
+test("a www. spelling of a site you added is the same site", async () => {
+  const page = await launchExtensionPage("options.html", {
+    storage: { custom: { "news.ycombinator.com": { label: "Hacker News", enabled: true } } }
+  });
+  try {
+    page.$("add-host").value = "www.news.ycombinator.com";
+    page.$("add-form").dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await settle(6);
+    assert.equal(page.chrome.__calls.permissions.length, 0);
+    assert.match(page.$("add-error").textContent, /already/);
+  } finally {
+    page.close();
+  }
+});
+
 test("nonsense is refused before Chrome is bothered with it", async () => {
   const page = await launchExtensionPage("options.html");
   try {
@@ -274,10 +316,24 @@ test("everything can be put back to the defaults, in two steps", async () => {
 test("a running lock refuses the reset too", async () => {
   const page = await launchExtensionPage("options.html", { storage: { lockUntil: Date.now() + 3600000 } });
   try {
-    assert.equal(page.$("reset").disabled, true);
+    /*
+     * `aria-disabled`, not `disabled`, and the distinction is the whole test. A
+     * `disabled` button is skipped by the tab order and fires no click in a real
+     * browser — so the toast below, which is the only place the reason is ever
+     * given, could never have been reached by anyone. It passed here only
+     * because jsdom dispatches click on disabled elements, which is to say the
+     * test was asserting behaviour Chrome does not produce.
+     */
+    assert.equal(page.$("reset").disabled, false, "still reachable by keyboard and mouse");
+    assert.equal(page.$("reset").getAttribute("aria-disabled"), "true");
+    assert.equal(page.$("reset").getAttribute("aria-describedby"), "lock-detail",
+      "and it says why, where every other locked control does");
     click(page.$("reset"));
     await settle();
     assert.match(page.$("toast").textContent, /Lock is on/);
+
+    // The refusal is real: nothing was written.
+    assert.equal(page.chrome.__store.pauseFeeds, undefined, "no reset happened");
   } finally {
     page.close();
   }

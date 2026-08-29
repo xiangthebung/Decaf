@@ -7,6 +7,28 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **A site you added yourself cannot be added twice.** The check that catches a
+  duplicate only ever knew the twelve sites built in, so re-typing the address of
+  a site you had added went straight past it, asked Chrome again for a permission
+  it already held, and then wrote the entry fresh — which switched a site you had
+  deliberately turned off back on, and reset its name to the bare address, while
+  the page said it had been added. A `www.` spelling of a site already on the
+  list is now recognised as the same site too.
+
+- **Reset says why it is unavailable during a Lock.** It was the one control a
+  Lock holds that used a real `disabled`, so it dropped out of the keyboard order
+  and out of a screen reader entirely — and because a disabled button fires no
+  click in a browser, the message explaining that a Lock was on could never
+  actually appear. It behaves like every other held control now: still reachable,
+  still answers, and says what is holding it.
+
+- **Two controls are legible again.** The address example in the add-a-site box
+  was dimmed twice over and sat at 2.96:1, below what body text needs. A switch
+  held by a Lock had its whole outline dimmed to 1.9:1, under what a control
+  boundary needs — and since that switch is still focusable and still operable,
+  the exemption for an inactive control never applied to it. The outline now
+  stays at full strength and only the surface inside it reads as held.
+
 - **The popup no longer describes work it is not doing.** Three separate states
   were being answered with the same reassuring sentence. A tab that was already
   open when Decaf was installed or updated has no Decaf in it until it is

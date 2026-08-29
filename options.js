@@ -282,7 +282,20 @@
       : "No passes yet.";
 
     $("intro").hidden = Boolean(settings.seenIntro);
-    $("reset").disabled = locked;
+    /*
+     * `aria-disabled`, like every other control a Lock holds — this one was the
+     * exception and it broke three things at once. A `disabled` button leaves the
+     * tab order, so the one control that carries the reason for its own
+     * unavailability was the one a screen reader never reached, which is exactly
+     * the failure the comments on the switches above say was fixed. It also
+     * fires no `click` in a real browser, so the "Lock is on until it ends."
+     * branch in `onReset` was dead code everywhere except the test — jsdom
+     * dispatches click on disabled elements, so the test passed on behaviour
+     * Chrome will not produce. And a mouse user got a greyed-out button with no
+     * explanation at all.
+     */
+    $("reset").setAttribute("aria-disabled", String(locked));
+    $("reset").setAttribute("aria-describedby", locked ? "lock-detail" : "");
   }
 
   async function refresh() {
@@ -320,8 +333,23 @@
       $("add-error").textContent = "That does not look like a website address.";
       return;
     }
-    if (D.getSite(`https://${host}/`)) {
-      $("add-error").textContent = "Decaf already covers that one — it is in the list above.";
+    /*
+     * `settings` is what makes this check see the sites you added yourself:
+     * without it `getSite` only knows the twelve built in, so re-adding one of
+     * your own sailed past here, asked Chrome for a permission it already had,
+     * and then went through `addCustomSite` — which writes the entry fresh. A
+     * site you had deliberately switched off came back on, its label reset to
+     * the bare host, and the page said "added" about something that had been
+     * there all along.
+     *
+     * Passing it also catches `www.example.com` against an entry added as
+     * `example.com`, which `getSite` already knows are the same site.
+     */
+    const existing = D.getSite(`https://${host}/`, settings);
+    if (existing) {
+      $("add-error").textContent = D.isCustomKey(existing)
+        ? "You have added that one already — it is in the list above."
+        : "Decaf already covers that one — it is in the list above.";
       return;
     }
     if (Object.keys(settings.custom).length >= D.MAX_CUSTOM_SITES) {

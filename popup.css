@@ -180,9 +180,23 @@ h2 {
   border-color: var(--accent-hover);
 }
 
-/* `aria-disabled` keeps a locked control in the tab order and carries its
-   reason with it, so the dimming happens here rather than through `:disabled`. */
+/*
+ * `aria-disabled` keeps a locked control in the tab order and carries its reason
+ * with it, so the dimming happens here rather than through `:disabled`.
+ *
+ * It dims the fill, never the outline. A control held by a Lock is still
+ * focusable and still operable, so it is not an inactive component and the
+ * contrast exemption for one does not apply: at `opacity: 0.55` the whole track
+ * went with it and its boundary fell to 1.9:1 against the card, under the 3:1 a
+ * control boundary needs. The border now stays at full `--edge`, which is 3.7:1,
+ * and only the surface inside it reads as held.
+ */
 .switch input[aria-disabled="true"] + .switch-track {
+  border-color: var(--edge);
+}
+
+.switch input[aria-disabled="true"] + .switch-track::after,
+.switch input[aria-disabled="true"]:checked + .switch-track {
   opacity: 0.55;
 }
 
