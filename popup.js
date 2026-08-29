@@ -30,10 +30,36 @@
   /**
    * Writes only what changed, and refuses anything a running Lock protects.
    * Returns true when the change was saved.
+   *
+   * `next` may be an object, or a function handed the state just read back. It
+   * has to be a function whenever the change is *inside* an object-valued
+   * setting — `sites`, `custom`, `snoozes` — because a patch names whole
+   * top-level keys and `createStoragePatch` compares them whole. Building one of
+   * those from the page's own in-memory copy meant writing every entry it held,
+   * including entries another surface had changed since this page last read:
+   * turn Reddit off in the popup, then LinkedIn off in a settings tab opened ten
+   * minutes earlier, and the settings tab wrote back its own stale `sites` with
+   * Reddit still on. Re-reading `latest` never fixed that on its own, because
+   * the stale object arrived already built.
    */
   async function save(next, note = "") {
-    const latest = await read();
-    const requested = { ...latest, ...next };
+    let latest;
+    try {
+      latest = await read();
+    } catch (_) {
+      /*
+       * The read failed, so there is nothing to compare against and nothing was
+       * written. The switch is still showing whatever it was just dragged to, and
+       * this is the same dangerous direction as a failed write: put the page back
+       * rather than leave it claiming a change that did not happen. This used to
+       * sit outside the try below, so it rejected past the revert and only the
+       * caller's generic note appeared.
+       */
+      render();
+      message("Not saved — Decaf could not read its settings. Try again.");
+      return false;
+    }
+    const requested = { ...latest, ...(typeof next === "function" ? next(latest) : next) };
     const candidate = D.mergeSettings(requested);
     if (D.isLocked(latest) && D.isWeakening(latest, requested)) {
       settings = latest;
@@ -56,7 +82,7 @@
          */
         settings = latest;
         render();
-        message(`Not saved — ${error?.message || "storage is unavailable"}.`);
+        message("Not saved — Decaf could not write to storage. Try again, or reopen this page.");
         return false;
       }
     }
@@ -332,18 +358,23 @@
 
   async function onEnableHere() {
     if (!site) return;
-    const next = D.wakeSite(settings, site);
     await save(
-      { enabled: true, snoozes: next.snoozes, ...siteOn(site, true) },
+      (from) => ({ enabled: true, snoozes: D.wakeSite(from, site).snoozes, ...siteOn(site, true)(from) }),
       `Decaf is on for ${D.siteLabel(site, settings)}.`
     );
   }
 
-  /** The patch that turns one site on or off, built or custom. */
+  /**
+   * The patch that turns one site on or off, built or custom. Takes the state to
+   * build on rather than reading `settings`, so it can be applied to whatever
+   * `save` just read back instead of to this page's older copy.
+   */
   function siteOn(key, value) {
-    if (!D.isCustomKey(key)) return { sites: { ...settings.sites, [key]: value } };
-    const host = D.customHost(key);
-    return { custom: { ...settings.custom, [host]: { ...settings.custom[host], enabled: value } } };
+    return (from) => {
+      if (!D.isCustomKey(key)) return { sites: { ...from.sites, [key]: value } };
+      const host = D.customHost(key);
+      return { custom: { ...from.custom, [host]: { ...from.custom[host], enabled: value } } };
+    };
   }
 
   async function onDisableHere() {
@@ -353,9 +384,8 @@
 
   async function onSnooze(minutes) {
     if (!site) return;
-    const next = D.snoozeSite(settings, site, minutes);
     await save(
-      { snoozes: next.snoozes },
+      (from) => ({ snoozes: D.snoozeSite(from, site, minutes).snoozes }),
       `${D.siteLabel(site, settings)} is normal for ${D.formatDuration(minutes * 60000)}.`
     );
   }

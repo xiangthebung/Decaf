@@ -15,6 +15,8 @@ const { launchExtensionPage, settle, click, toggle, read } = require("../tools/h
 const D = require("../core.js");
 
 const siteRow = (page, key) => page.document.querySelector(`.site[data-site="${key}"]`);
+const switchFor = (page, key) => page.document.querySelector(`input[data-setting="${key}"]`);
+const siteSwitch = (page, key) => page.document.querySelector(`.site[data-site="${key}"] input`);
 
 /* ------------------------------------------------------------------ popup -- */
 
@@ -464,5 +466,92 @@ test("the popup asserts nothing about a page before it has read anything", () =>
     }
   } finally {
     dom.window.close();
+  }
+});
+
+/* --------------------------------------------------- writing without losing -- */
+
+/*
+ * A patch names whole top-level keys, so a change to one entry of `sites` writes
+ * every entry of `sites`. Built from the page's own copy, that copy is as old as
+ * the last time this page read — and everything another surface changed since is
+ * written back to what it used to be. The switch you touched is right and one you
+ * never touched has quietly moved.
+ */
+test("changing one site does not undo a change made somewhere else", async () => {
+  const page = await launchExtensionPage("options.html");
+  try {
+    // Another surface — the popup, or the worker — turns Reddit off. This page
+    // is not told, so its in-memory copy still says Reddit is on.
+    const store = page.chrome.__store;
+    await page.chrome.storage.local.set({ sites: { ...D.DEFAULT_SETTINGS.sites, reddit: false } });
+
+    toggle(siteSwitch(page, "linkedin"), false);
+    await settle(6);
+
+    assert.equal(store.sites.linkedin, false, "the change that was asked for happened");
+    assert.equal(store.sites.reddit, false, "and the one nobody asked to undo was not undone");
+  } finally {
+    page.close();
+  }
+});
+
+/* The same contract for the popup, which writes the same keys. */
+test("the popup does not write back a site list it has gone stale on", async () => {
+  const page = await launchExtensionPage("popup.html", {
+    tabUrl: "https://www.youtube.com/",
+    tabReply: { anchor: "selector", route: "feed", active: true, hidingFeed: true, placed: true }
+  });
+  try {
+    const store = page.chrome.__store;
+    await page.chrome.storage.local.set({ sites: { ...D.DEFAULT_SETTINGS.sites, reddit: false } });
+
+    click(page.$("site-disable"));
+    await settle(6);
+
+    assert.equal(store.sites.youtube, false, "YouTube went off, as asked");
+    assert.equal(store.sites.reddit, false, "Reddit stayed off, as nobody asked");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * A failed *read* inside `save` used to reject straight past the revert, so only
+ * the caller's generic note appeared and the switch was left showing a change
+ * that never reached storage — the same wrong direction the failed-write path
+ * was carefully written to avoid.
+ */
+test("a switch does not keep a change that could not even be read back", async () => {
+  const page = await launchExtensionPage("options.html");
+  try {
+    const box = switchFor(page, "upsideDown");
+    assert.equal(box.checked, false, "off to begin with");
+
+    page.chrome.storage.local.get = async () => {
+      throw new Error("Extension context invalidated.");
+    };
+    toggle(box, true);
+    await settle(6);
+
+    assert.equal(box.checked, false, "the switch is put back where storage still has it");
+    assert.match(page.$("toast").textContent, /Not saved/);
+    assert.equal(page.chrome.__store.upsideDown, undefined, "and nothing was written");
+  } finally {
+    page.close();
+  }
+});
+
+/* Chrome's own error strings are written for developers; they do not go on screen. */
+test("a storage failure is reported in words, not in Chrome's", async () => {
+  const page = await launchExtensionPage("options.html", { failSet: true });
+  try {
+    toggle(switchFor(page, "upsideDown"), true);
+    await settle(6);
+    const said = page.$("toast").textContent;
+    assert.match(said, /Not saved/);
+    assert.doesNotMatch(said, /QUOTA|invalidated|Error:/i, said);
+  } finally {
+    page.close();
   }
 });

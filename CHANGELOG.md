@@ -7,6 +7,20 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **Two open Decaf windows no longer undo each other.** A settings tab left open
+  while you changed something in the popup would, on its next switch, write back
+  everything it had been holding since it was opened — so turning LinkedIn off in
+  the settings tab could quietly turn Reddit back on. Changes are now written
+  against what storage says at the moment of the write rather than against
+  whatever the page last read.
+
+- **A switch no longer keeps a change that was never saved.** The failed-write
+  path was careful to put the page back; the failed-*read* path was not, and left
+  the switch showing a change that had not reached storage. Both now behave the
+  same way. Chrome's own error text has also stopped appearing on screen: those
+  strings are written for developers, and "QUOTA_BYTES quota exceeded" is not an
+  answer to anybody.
+
 - **A site you added yourself cannot be added twice.** The check that catches a
   duplicate only ever knew the twelve sites built in, so re-typing the address of
   a site you had added went straight past it, asked Chrome again for a permission

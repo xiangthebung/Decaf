@@ -36,9 +36,27 @@
     return D.mergeSettings(await chrome.storage.local.get(D.DEFAULT_SETTINGS));
   }
 
+  /**
+   * Writes only what changed, and refuses anything a running Lock protects.
+   *
+   * `next` may be an object, or a function handed the state just read back — see
+   * the longer note on the popup's copy. Anything that changes one entry inside
+   * `sites`, `custom` or `snoozes` must be a function, because a patch names the
+   * whole key and building it from this page's older copy writes back every
+   * other entry along with it, undoing whatever another surface changed since.
+   */
   async function save(next, note = "") {
-    const latest = await read();
-    const requested = { ...latest, ...next };
+    let latest;
+    try {
+      latest = await read();
+    } catch (_) {
+      // Nothing was written, and the switch is showing what it was just dragged
+      // to. Put the page back, exactly as a failed write does.
+      render();
+      toast("Not saved — Decaf could not read its settings. Try again.");
+      return false;
+    }
+    const requested = { ...latest, ...(typeof next === "function" ? next(latest) : next) };
     const candidate = D.mergeSettings(requested);
     if (D.isLocked(latest) && D.isWeakening(latest, requested)) {
       settings = latest;
@@ -57,7 +75,7 @@
         // that was never written.
         settings = latest;
         render();
-        toast(`Not saved — ${error?.message || "storage is unavailable"}.`);
+        toast("Not saved — Decaf could not write to storage. Try again, or reopen this page.");
         return false;
       }
     }
@@ -138,10 +156,13 @@
     return row;
   }
 
+  /** Built against whatever `save` read back, never against this page's copy. */
   function sitePatch(key, value) {
-    if (!D.isCustomKey(key)) return { sites: { ...settings.sites, [key]: value } };
-    const host = D.customHost(key);
-    return { custom: { ...settings.custom, [host]: { ...settings.custom[host], enabled: value } } };
+    return (from) => {
+      if (!D.isCustomKey(key)) return { sites: { ...from.sites, [key]: value } };
+      const host = D.customHost(key);
+      return { custom: { ...from.custom, [host]: { ...from.custom[host], enabled: value } } };
+    };
   }
 
   function buildSites() {
@@ -361,19 +382,21 @@
     try {
       granted = await chrome.permissions.request({ origins });
     } catch (error) {
-      $("add-error").textContent = `Chrome refused that address — ${error?.message || "try another"}.`;
+      $("add-error").textContent = "Chrome refused that address. Try another.";
       return;
     }
     if (!granted) {
       $("add-error").textContent = "Decaf needs permission for that site to do anything on it.";
       return;
     }
-    const next = D.addCustomSite(settings, host);
-    if (!Object.hasOwn(next.custom, host)) {
+    if (!Object.hasOwn(D.addCustomSite(settings, host).custom, host)) {
       $("add-error").textContent = "That address could not be added.";
       return;
     }
-    const saved = await save({ custom: next.custom }, `${host} added. Open it to see Decaf there.`);
+    const saved = await save(
+      (from) => ({ custom: D.addCustomSite(from, host).custom }),
+      `${host} added. Open it to see Decaf there.`
+    );
     if (saved) {
       $("add-host").value = "";
       buildSites();
@@ -384,8 +407,7 @@
   async function onRemoveCustom(key) {
     const host = D.customHost(key);
     if (!host) return;
-    const next = D.removeCustomSite(settings, host);
-    const saved = await save({ custom: next.custom }, `${host} removed.`);
+    const saved = await save((from) => ({ custom: D.removeCustomSite(from, host).custom }), `${host} removed.`);
     if (!saved) return;
     try {
       await chrome.permissions.remove({ origins: [D.customMatch(host)] });
