@@ -622,3 +622,40 @@ test("removing an added site leaves the keyboard somewhere useful", async () => 
     page.close();
   }
 });
+
+/*
+ * The health line is filled in after the popup has already been painted, once
+ * the tab answers — so someone who has finished reading the popup never hears
+ * it unless it announces itself.
+ */
+test("a warning that arrives late announces itself", () => {
+  const markup = read("popup.html");
+  const dom = new JSDOM(markup, { url: "chrome-extension://decaf-test/popup.html" });
+  try {
+    const health = dom.window.document.getElementById("site-health");
+    assert.equal(health.getAttribute("aria-live"), "polite");
+    assert.equal(health.getAttribute("role"), "status");
+  } finally {
+    dom.window.close();
+  }
+});
+
+/* A refused address belongs to the field it is about, not to the page. */
+test("a rejected address is tied to the field and gets the keyboard back", async () => {
+  const page = await launchExtensionPage("options.html");
+  try {
+    const field = page.$("add-host");
+    assert.equal(field.getAttribute("aria-describedby"), "add-error",
+      "the field points at the line that will explain a refusal");
+
+    field.value = "not a website";
+    page.$("add-form").dispatchEvent(new page.window.Event("submit", { bubbles: true, cancelable: true }));
+    await settle(6);
+
+    assert.match(page.$("add-error").textContent, /does not look like/);
+    assert.equal(field.getAttribute("aria-invalid"), "true");
+    assert.equal(page.document.activeElement, field, "and the keyboard is back on the thing to fix");
+  } finally {
+    page.close();
+  }
+});

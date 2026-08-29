@@ -495,7 +495,10 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (!Object.keys(changes).some((key) => Object.hasOwn(D.DEFAULT_SETTINGS, key))) return;
-      refresh().catch(() => {});
+      // Not swallowed: this is the path that keeps two open surfaces agreeing, so
+      // a failure here means the popup is now showing state that storage has
+      // already moved past — which is precisely the thing it must not do quietly.
+      refresh().catch(() => message("Decaf could not read the latest settings."));
     });
     ticker = setInterval(() => {
       if (!settings) return;

@@ -239,6 +239,23 @@
       button.setAttribute("aria-checked", String(checked));
       button.tabIndex = checked ? 0 : -1;
     }
+    /*
+     * If nothing matched, every button here would be `tabIndex = -1` and the
+     * group would be unreachable by keyboard entirely.
+     *
+     * Not reachable today: `chosenHours` starts at `DEFAULT_LOCK_HOURS`, which is
+     * one of `LOCK_DURATIONS`, and only ever changes to another of them. So this
+     * is deliberately untested — a test written for it could only pass
+     * vacuously, and an assertion that cannot fail is worse than none, because it
+     * advertises cover that is not there. It is here because the popup's copy of
+     * this function has carried it from the start and this one had drifted
+     * without it, and because three lines is a cheap price for a control that
+     * nobody could otherwise operate.
+     */
+    if (!Array.from(container.children).some((button) => button.tabIndex === 0)) {
+      const first = container.firstElementChild;
+      if (first) first.tabIndex = 0;
+    }
   }
 
   function lockSummary() {
@@ -388,13 +405,29 @@
    * show every person who installs Decaf a warning about every site they will
    * ever visit, for a feature most of them will never use.
    */
+  /**
+   * Report a rejected address on the field it is about.
+   *
+   * The message was announced once and then floated free of the input: nothing
+   * tied the two together, the field went on reporting itself as valid, and the
+   * keyboard was left on the Add button with the reason for the refusal above and
+   * behind it. `aria-invalid` and the focus move are what make the message
+   * findable again by someone who did not catch it the first time.
+   */
+  function addError(text) {
+    $("add-error").textContent = text;
+    $("add-host").setAttribute("aria-invalid", "true");
+    $("add-host").focus();
+  }
+
   async function onAddSite(event) {
     event.preventDefault();
     $("add-error").textContent = "";
+    $("add-host").removeAttribute("aria-invalid");
     const raw = $("add-host").value;
     const host = D.asHost(raw);
     if (!host) {
-      $("add-error").textContent = "That does not look like a website address.";
+      addError("That does not look like a website address.");
       return;
     }
     /*
@@ -411,13 +444,13 @@
      */
     const existing = D.getSite(`https://${host}/`, settings);
     if (existing) {
-      $("add-error").textContent = D.isCustomKey(existing)
+      addError(D.isCustomKey(existing)
         ? "You have added that one already — it is in the list above."
-        : "Decaf already covers that one — it is in the list above.";
+        : "Decaf already covers that one — it is in the list above.");
       return;
     }
     if (Object.keys(settings.custom).length >= D.MAX_CUSTOM_SITES) {
-      $("add-error").textContent = `Decaf holds ${D.MAX_CUSTOM_SITES} added sites at a time.`;
+      addError(`Decaf holds ${D.MAX_CUSTOM_SITES} added sites at a time.`);
       return;
     }
     const origins = [D.customMatch(host)];
@@ -425,15 +458,15 @@
     try {
       granted = await chrome.permissions.request({ origins });
     } catch (error) {
-      $("add-error").textContent = "Chrome refused that address. Try another.";
+      addError("Chrome refused that address. Try another.");
       return;
     }
     if (!granted) {
-      $("add-error").textContent = "Decaf needs permission for that site to do anything on it.";
+      addError("Decaf needs permission for that site to do anything on it.");
       return;
     }
     if (!Object.hasOwn(D.addCustomSite(settings, host).custom, host)) {
-      $("add-error").textContent = "That address could not be added.";
+      addError("That address could not be added.");
       return;
     }
     const saved = await save(
@@ -455,8 +488,15 @@
     try {
       await chrome.permissions.remove({ origins: [D.customMatch(host)] });
     } catch (_) {
-      // Chrome keeps the grant; nothing runs there because the site is gone
-      // from the list and the content script is unregistered with it.
+      /*
+       * Nothing of Decaf's runs there any more — the site is off the list and its
+       * content script is unregistered with it — but Chrome is still holding a
+       * host permission the person has just asked to give back, and no screen
+       * anywhere lists the grants that are being held. Staying quiet about that
+       * is the wrong call for an extension whose settings page ends with a
+       * promise about what it can reach.
+       */
+      toast(`${host} removed, but Chrome kept its site permission. Remove it under Decaf at chrome://extensions.`);
     }
     buildSites();
     render();
@@ -550,7 +590,9 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (!Object.keys(changes).some((key) => Object.hasOwn(D.DEFAULT_SETTINGS, key))) return;
-      refresh().catch(() => {});
+      // See the note on the popup's copy: a silent failure here leaves the page
+      // disagreeing with storage and saying nothing about it.
+      refresh().catch(() => toast("Decaf could not read the latest settings."));
     });
     ticker = setInterval(() => {
       if (settings && D.isLocked(settings)) render();

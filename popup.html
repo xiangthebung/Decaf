@@ -34,7 +34,11 @@
           <span id="site-badge" class="badge"></span>
         </div>
         <p id="site-detail" class="detail"></p>
-        <p id="site-health" class="detail warn" hidden></p>
+        <!-- A live region: this line is filled in after the popup has already been
+             painted, once the tab answers the health probe, so a reader who has
+             finished with the popup would otherwise never learn the feed was not
+             found. -->
+        <p id="site-health" class="detail warn" role="status" aria-live="polite" hidden></p>
         <button id="site-enable" class="button primary" type="button" data-focus-next="site-disable" hidden>Turn on here</button>
 
         <div id="site-off" class="off-row" hidden>

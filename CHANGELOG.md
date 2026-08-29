@@ -7,6 +7,20 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **A refused address says so on the field it is about.** The message floated
+  free of the box you typed in: nothing connected the two, the field went on
+  reporting itself as valid, and the keyboard was left past the thing that needed
+  fixing. It now marks the field and puts the keyboard back on it.
+
+- **A warning that arrives late is announced.** The line that says Decaf could
+  not find the feed is filled in after the popup has been drawn, once the page
+  answers, so anyone reading rather than looking never heard it.
+
+- **Failures that were being swallowed now say something.** A refresh that could
+  not read the settings left the page quietly disagreeing with what was stored. A
+  site permission Chrome declined to give back was passed over in silence, on the
+  one screen that ends with a promise about what Decaf can reach.
+
 - **The privacy policy names every permission Decaf asks for.** `scripting` was
   in the manifest and absent from the policy, which is the one document where
   that gap matters most. The policy is also now exact about what the content
