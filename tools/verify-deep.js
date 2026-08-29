@@ -858,16 +858,28 @@ sections.popup = async () => {
    * A popup opened as an ordinary tab has no tab behind it, so
    * `chrome.tabs.query` is answered with the page being asked about. That is the
    * one thing about the popup that cannot be exercised as-is.
+   *
+   * `sendMessage` has to be answered too, and for the same reason. The tab id
+   * handed back above is invented, so a real `sendMessage` to it always rejects —
+   * which is Chrome's way of saying "there is no Decaf in that tab", and the
+   * popup now says exactly that when it hears it. Leaving the stub half-finished
+   * made every check here assert the popup's behaviour for a state the check had
+   * not meant to set up. `health` is what that pretend tab reports back; pass
+   * `null` to stand in for a tab that really has no content script.
    */
-  async function openPopup(tabUrl) {
+  async function openPopup(tabUrl, health = { anchor: "selector", route: "feed", active: true, hidingFeed: true, placed: true }) {
     const page = await newPage();
-    await page.addInitScript((pretend) => {
+    await page.addInitScript(({ pretend, reply }) => {
       const wait = setInterval(() => {
         if (!globalThis.chrome?.tabs) return;
         clearInterval(wait);
         chrome.tabs.query = async () => (pretend ? [{ url: pretend, id: 1 }] : []);
+        chrome.tabs.sendMessage = async () => {
+          if (!reply) throw new Error("Could not establish connection. Receiving end does not exist.");
+          return reply;
+        };
       }, 1);
-    }, tabUrl);
+    }, { pretend: tabUrl, reply: health });
     await page.goto(extensionPage("popup.html"));
     await page.waitForFunction(() => document.getElementById("master-state").textContent !== "");
     await page.waitForTimeout(150);
@@ -894,10 +906,29 @@ sections.popup = async () => {
 
   await check("on a page someone opened it does not claim anything is paused", async () => {
     await setSettings();
-    const page = await openPopup(url("youtube", "/watch?v=abc"));
+    const page = await openPopup(url("youtube", "/watch?v=abc"),
+      { anchor: "none", route: "media", active: true, hidingFeed: false, placed: false });
     try {
       assert.equal(await page.locator("#site-detail").innerText(), "Paused: Home, Shorts, Explore.");
       assert.equal(await page.locator("#site-badge").innerText(), "On");
+    } finally {
+      await page.close();
+    }
+  });
+
+  /*
+   * The tab that has no Decaf in it: every tab that was open at the moment of an
+   * install or an update is in this state until it is reloaded once. The popup
+   * used to describe a paused feed here, which was the one page where the claim
+   * was guaranteed to be false.
+   */
+  await check("a tab with no Decaf in it is told to reload, not told it is paused", async () => {
+    await setSettings();
+    const page = await openPopup(url("youtube", "/"), null);
+    try {
+      assert.equal(await page.locator("#site-health").isVisible(), true);
+      assert.match(await page.locator("#site-health").innerText(), /Reload this tab/);
+      assert.match(await page.locator("#site-detail").innerText(), /has not started on this tab/);
     } finally {
       await page.close();
     }
