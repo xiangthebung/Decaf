@@ -33,7 +33,7 @@
           <div>
             <h2 id="intro-title">Three things worth knowing</h2>
           </div>
-          <button id="intro-dismiss" class="button quiet" type="button">Got it</button>
+          <button id="intro-dismiss" class="button quiet" type="button" data-focus-next="master">Got it</button>
         </div>
         <ol class="steps">
           <li>
@@ -156,8 +156,8 @@
         <ul id="lock-summary" class="summary" hidden></ul>
         <div class="lock-controls">
           <div id="lock-choices" class="segmented" role="radiogroup" aria-label="Lock duration"></div>
-          <button id="lock-button" class="button primary" type="button">Lock</button>
-          <button id="lock-cancel" class="button quiet" type="button" hidden>Cancel</button>
+          <button id="lock-button" class="button primary" type="button" data-focus-next="reset">Lock</button>
+          <button id="lock-cancel" class="button quiet" type="button" data-focus-next="lock-button" hidden>Cancel</button>
         </div>
         <p class="detail">
           A Lock holds Decaf against you at your weakest, not against an attacker: removing the extension

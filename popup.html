@@ -35,17 +35,17 @@
         </div>
         <p id="site-detail" class="detail"></p>
         <p id="site-health" class="detail warn" hidden></p>
-        <button id="site-enable" class="button primary" type="button" hidden>Turn on here</button>
+        <button id="site-enable" class="button primary" type="button" data-focus-next="site-disable" hidden>Turn on here</button>
 
         <div id="site-off" class="off-row" hidden>
           <p class="detail">Need this site to behave normally?</p>
           <div id="snooze-choices" class="segmented" role="group" aria-label="Turn Decaf off for a while"></div>
-          <button id="site-disable" class="button quiet" type="button">Off until I turn it back on</button>
+          <button id="site-disable" class="button quiet" type="button" data-focus-next="site-enable">Off until I turn it back on</button>
         </div>
 
         <div id="pass-row" class="pass" hidden>
           <span id="pass-time">Feed open</span>
-          <button id="pass-end" class="button quiet" type="button">Pause it again</button>
+          <button id="pass-end" class="button quiet" type="button" data-focus-next="site-disable">Pause it again</button>
         </div>
       </section>
 
@@ -58,8 +58,8 @@
         <p id="lock-detail" class="detail">Holds every Decaf setting in place until it ends.</p>
         <ul id="lock-summary" class="summary" hidden></ul>
         <div id="lock-choices" class="segmented" role="radiogroup" aria-label="Lock duration"></div>
-        <button id="lock-button" class="button primary" type="button">Lock</button>
-        <button id="lock-cancel" class="button quiet" type="button" hidden>Cancel</button>
+        <button id="lock-button" class="button primary" type="button" data-focus-next="settings">Lock</button>
+        <button id="lock-cancel" class="button quiet" type="button" data-focus-next="lock-button" hidden>Cancel</button>
       </section>
 
       <p id="passes" class="meter"></p>

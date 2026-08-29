@@ -7,6 +7,13 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **The keyboard is not dropped when a button does its job.** Several controls in
+  Decaf work by disappearing: turning it on for a site takes away "Turn on here",
+  confirming a Lock takes away the Lock button, removing an added site takes away
+  the row it was in. Each of those left the keyboard on nothing, at the top of
+  the page, with no announcement — worst on the settings page, which is long.
+  Every one of them now hands the keyboard to the control that took its place.
+
 - **Two open Decaf windows no longer undo each other.** A settings tab left open
   while you changed something in the popup would, on its next switch, write back
   everything it had been holding since it was opened — so turning LinkedIn off in

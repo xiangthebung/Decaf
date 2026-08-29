@@ -555,3 +555,70 @@ test("a storage failure is reported in words, not in Chrome's", async () => {
     page.close();
   }
 });
+
+/* ------------------------------------------------------------------ focus -- */
+
+/*
+ * Several controls on both pages do their job by ceasing to exist. `[hidden]` is
+ * `display: none`, so the keyboard was being dropped on `<body>` every time —
+ * mid-task, silently, and on the settings page a long scroll from where it was.
+ */
+test("a button that hides itself hands the keyboard on", async () => {
+  const page = await launchExtensionPage("popup.html", {
+    tabUrl: "https://www.youtube.com/",
+    tabReply: { anchor: "selector", route: "feed", active: true, hidingFeed: true, placed: true },
+    storage: { sites: { ...D.DEFAULT_SETTINGS.sites, youtube: false } }
+  });
+  try {
+    const enable = page.$("site-enable");
+    assert.equal(enable.hidden, false, "the site is off, so this is the button on offer");
+    enable.focus();
+    assert.equal(page.document.activeElement, enable);
+
+    click(enable);
+    await settle(6);
+
+    assert.equal(enable.hidden, true, "it did its job by going away");
+    assert.notEqual(page.document.activeElement, page.document.body, "the keyboard did not fall to the page");
+    assert.equal(page.document.activeElement, page.$("site-disable"), "it went to what replaced it");
+  } finally {
+    page.close();
+  }
+});
+
+/* And on the settings page, where the fall is furthest. */
+test("dismissing the intro does not drop the keyboard at the top of the page", async () => {
+  const page = await launchExtensionPage("options.html");
+  try {
+    assert.equal(page.$("intro").hidden, false, "first run, so the intro is up");
+    const dismiss = page.$("intro-dismiss");
+    dismiss.focus();
+    click(dismiss);
+    await settle(6);
+
+    assert.equal(page.$("intro").hidden, true);
+    assert.notEqual(page.document.activeElement, page.document.body);
+    assert.equal(page.document.activeElement, page.$("master"));
+  } finally {
+    page.close();
+  }
+});
+
+/* A row destroyed by a rebuild is the same problem wearing different clothes. */
+test("removing an added site leaves the keyboard somewhere useful", async () => {
+  const page = await launchExtensionPage("options.html", {
+    storage: { seenIntro: true, custom: { "news.ycombinator.com": { label: "Hacker News", enabled: true } } }
+  });
+  try {
+    const remove = siteRow(page, "custom:news.ycombinator.com").querySelector(".remove");
+    remove.focus();
+    click(remove);
+    await settle(6);
+
+    assert.equal(siteRow(page, "custom:news.ycombinator.com"), null, "the row is gone");
+    assert.notEqual(page.document.activeElement, page.document.body);
+    assert.equal(page.document.activeElement, page.$("add-host"));
+  } finally {
+    page.close();
+  }
+});

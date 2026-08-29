@@ -213,8 +213,37 @@
     $("lock-button").textContent = confirmingLock ? "Confirm lock" : "Lock";
   }
 
+
+  /** On the page, and not inside anything that is hidden. */
+  function reachable(element) {
+    return Boolean(element?.isConnected && !element.closest("[hidden]"));
+  }
+
+  /**
+   * Move the keyboard on when the control it was on has just hidden itself.
+   *
+   * Several controls here do their job by ceasing to exist: turning Decaf on for
+   * a site takes away "Turn on here", confirming a Lock takes away the Lock
+   * button, removing an added site takes away the row it was in. `[hidden]` is
+   * `display: none`, so focus falls to `<body>` — a keyboard user is dropped at
+   * the top of the page, mid-task, with nothing said about why, and on the
+   * settings page that is a long way from where they were.
+   *
+   * Each of those controls names its successor in the markup, so the answer lives
+   * beside the thing it is about rather than in a table here. Called at the end
+   * of every render, which is the only moment the page knows something has gone.
+   */
+  function passFocus(had) {
+    if (!had || had === document.body || reachable(had)) return;
+    // `dataset` survives removal from the document, so a rebuilt row still knows
+    // where its keyboard should go.
+    const next = had.dataset?.focusNext ? $(had.dataset.focusNext) : null;
+    if (reachable(next)) next.focus();
+  }
+
   function render() {
     if (!settings) return;
+    const hadFocus = document.activeElement;
     const locked = D.isLocked(settings);
     const supported = Boolean(site);
     const active = D.isActiveForSite(settings, site);
@@ -304,6 +333,7 @@
       : "";
 
     renderLock();
+    passFocus(hadFocus);
   }
 
   async function refresh() {
