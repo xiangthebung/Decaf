@@ -168,6 +168,13 @@ nothing about whether it matches.
 
 `tools/audit.js` is the check that matters after a redesign. For each site it opens the feed and then one post, and reports the card's width, feed items still showing, comment threads, rails, red badges, playing video, and every number left on the page — the last one as a note, so a count Decaf's own rules cannot see is still visible to a human reading the output. On Reddit it also reports how much of the thread the cap left behind, and fails if the answer is gone as loudly as it fails if the scroll is still there.
 
+`STATE.md` holds everything with a date on it: what each verification command
+actually proves, the numbers they last reported, what is *not* verified and what
+it would take, the ideas already tried and rejected, and the traps. It is
+deliberately the only volatile document — this file is meant to stay true across
+sessions, and the bug ledger lives in the commit messages, attached to the diffs
+they describe, where it cannot drift away from them.
+
 | File | Role |
 | --- | --- |
 | `core.js` | The site table (hosts, route rules, feed containers), the settings shape, and the rules for passes, snoozes, added sites and Locks. Pure functions, shared by every other file. |

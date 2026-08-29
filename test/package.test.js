@@ -718,7 +718,7 @@ test("every keyboard shortcut the manifest declares is written down", () => {
 
 /* Every file the documentation points at should be a file that exists. */
 test("the documentation does not name files that are gone", () => {
-  const docs = ["README.md", "PRIVACY_POLICY.md", "CHANGELOG.md", "STORE_LISTING.md"];
+  const docs = ["README.md", "PRIVACY_POLICY.md", "CHANGELOG.md", "STORE_LISTING.md", "STATE.md"];
   const named = /(?:^|[\s(`"'])((?:tools|scripts|test|icons)\/[A-Za-z0-9_.-]+\.[a-z]+)/g;
   for (const doc of docs) {
     for (const [, file] of read(doc).matchAll(named)) {
@@ -727,5 +727,22 @@ test("the documentation does not name files that are gone", () => {
         `${doc} refers to ${file}, which does not exist`
       );
     }
+  }
+});
+
+/*
+ * `STATE.md` is where the volatile claims live, so it is the document most able
+ * to go quietly wrong. The npm scripts it tells people to run are the part a
+ * rename would break without a word.
+ */
+test("every command the state document names is a command that exists", () => {
+  const state = read("STATE.md");
+  const scripts = JSON.parse(read("package.json")).scripts;
+  for (const [, name] of state.matchAll(/`npm run ([a-z:]+)`/g)) {
+    assert.ok(Object.hasOwn(scripts, name), `STATE.md names \`npm run ${name}\`, which package.json does not have`);
+  }
+  for (const [, name] of state.matchAll(/`npm ([a-z]+)`/g)) {
+    if (name === "run") continue;
+    assert.ok(Object.hasOwn(scripts, name), `STATE.md names \`npm ${name}\`, which package.json does not have`);
   }
 });
