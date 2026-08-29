@@ -4,7 +4,7 @@ Volatile. Everything here has a date on it. Anything that is true regardless of
 when you are reading lives in `README.md` instead — the navigation map, the
 design rules, and the known limits are all there.
 
-Last surveyed: 2026-08-29, at `161ed2d`.
+Last surveyed: 2026-08-29, at `d680cb6`.
 
 ## How to verify it, and what each command actually proves
 
@@ -21,9 +21,9 @@ Last surveyed: 2026-08-29, at `161ed2d`.
 
 ## Measured on 2026-08-29
 
-- `npm test` — 187 tests, 181 pass, 6 skipped, 0 fail. The six skips are the
+- `npm test` — 188 tests, 182 pass, 6 skipped, 0 fail. The six skips are the
   browser and live-network checks, which opt in through environment variables.
-- `DECAF_BROWSER=1 npm test` — 185 pass, 2 skipped, 0 fail. The two remaining
+- `DECAF_BROWSER=1 npm test` — 186 pass, 2 skipped, 0 fail. The two remaining
   skips need `DECAF_LIVE=1`.
 - `npm run build` — 23 files, v1.1.0.
 - `node scripts/negative-test.mjs` — passes.
@@ -39,6 +39,9 @@ Stated plainly because these do not become verified by going unmentioned.
   tell you whether a site redesigned itself this morning.
 - **`DECAF_LIVE=1`** has not been run in this pass. It is the cheapest signal
   that a feed selector has gone stale.
+- **`node tools/layout.js`** was not re-run in this pass. Nothing in `content.css`
+  changed, and that tool measures the in-page notice only — the stylesheets that
+  did change are the popup's and the settings page's, which it never loads.
 - **How any of it looks.** No tool here judges whether the card reads well, the
   greys sit right, or the hold feels like three seconds. `tools/layout.js`
   proves the page does not *move*, which is a different claim.
