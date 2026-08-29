@@ -8,6 +8,13 @@
   let site = null;
   let route = "";
   let health = null;
+  /*
+   * Set when Chrome could not say what the current tab is. Distinct from "this
+   * is not a site Decaf covers", which is what the popup used to show for it —
+   * turning a failure to find anything out into a confident statement about the
+   * page in front of you.
+   */
+  let tabUnknown = false;
   let chosenHours = D.DEFAULT_LOCK_HOURS;
   let confirmingLock = false;
   let ticker = null;
@@ -199,6 +206,11 @@
 
     $("site-card").hidden = !supported;
     $("unsupported").hidden = supported;
+    // Written here rather than in the markup so the count cannot fall behind the
+    // site table, and so the failure case gets to say something true.
+    $("unsupported").textContent = tabUnknown
+      ? "Decaf could not tell which page this is. Close this and open it again."
+      : `Decaf works on ${D.SITE_KEYS.length} feed-driven sites, plus any you add yourself. Open one to see it here.`;
     if (supported) {
       const label = D.siteLabel(site, settings);
       const summary = D.feedSummary(site, settings);
@@ -207,17 +219,27 @@
       badge.textContent = passUntil ? "Feed open" : snoozeUntil ? "Snoozed" : active ? "On" : "Off";
       badge.classList.toggle("on", active && !passUntil);
       badge.classList.toggle("pass", Boolean(passUntil || snoozeUntil));
+      /*
+       * Whether Decaf is actually running in that tab, which is not the same
+       * question as whether it is switched on for the site. A tab opened before
+       * Decaf was installed, or one left over from before an update, carries no
+       * content script and no reload has happened yet — see the note on the
+       * probe in `refresh`.
+       */
+      const silent = health?.anchor === "unreachable";
       $("site-detail").textContent = snoozeUntil
         ? `Off for another ${D.formatDuration(snoozeUntil - Date.now())}. ${label} behaves normally until then.`
         : !active
           ? `Decaf is off here. ${label} behaves normally.`
-          : !settings.pauseFeeds
-            ? "Grayscale media, no reward counts, calm badges."
-            : passUntil
-              ? `${summary} are open for now.`
-              : route === "feed"
-                ? "This feed is paused. Hold the button on the page to open it for 5 minutes."
-                : `Paused: ${summary}.`;
+          : silent
+            ? `Decaf has not started on this tab, so ${label} is behaving normally.`
+            : !settings.pauseFeeds
+              ? "Grayscale media, no reward counts, calm badges."
+              : passUntil
+                ? `${summary} are open for now.`
+                : route === "feed"
+                  ? "This feed is paused. Hold the button on the page to open it for 5 minutes."
+                  : `Paused: ${summary}.`;
       $("site-enable").hidden = active;
       // A snooze is a weakening, so a running Lock would only refuse it — do not
       // offer buttons that exist to be declined.
@@ -230,13 +252,24 @@
        * no idea whether it actually was. When a site redesign outruns a selector
        * that reads as Decaf lying to your face — and it is also the only channel
        * there is, because nothing here reports anything anywhere.
+       *
+       * There are three answers to that question and the first version of this
+       * only handled two. A tab that says `anchor: "none"` has Decaf running in
+       * it and cannot find the feed. A tab that says nothing at all has no Decaf
+       * in it — and that case fell through to the reassuring branch, so the one
+       * page where Decaf was demonstrably doing nothing was also the page the
+       * popup was most confident about. It is the commoner of the two, because
+       * every tab open at the moment of an install or an update is in it until
+       * it is reloaded once.
        */
       const missing = active && route === "feed" && settings.pauseFeeds && !passUntil && health?.anchor === "none";
       const guessed = health?.anchor === "shape";
-      $("site-health").hidden = !(missing || guessed);
-      $("site-health").textContent = missing
-        ? `Decaf could not find the feed on this page. ${label} may have changed.`
-        : "Found this feed by its shape — the site may have changed.";
+      $("site-health").hidden = !(missing || guessed || silent);
+      $("site-health").textContent = silent
+        ? `Reload this tab to start Decaf on it. It was open before Decaf was.`
+        : missing
+          ? `Decaf could not find the feed on this page. ${label} may have changed.`
+          : "Found this feed by its shape — the site may have changed.";
     }
 
     const totals = D.passTotals(settings);
@@ -254,9 +287,11 @@
       [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       site = D.getSite(tab?.url, settings);
       route = D.getRoute(tab?.url, settings);
+      tabUnknown = false;
     } catch (_) {
       site = null;
       route = "";
+      tabUnknown = true;
     }
     /*
      * Paint before asking the tab anything. The health probe answers on the
@@ -271,8 +306,16 @@
         health = await chrome.tabs.sendMessage(tab.id, { type: "decaf-health" });
         if (health) render();
       } catch (_) {
-        // No content script in that tab — a page opened before Decaf was
-        // installed, or one Chrome will not script. Nothing to report.
+        /*
+         * No content script in that tab: a page opened before Decaf was
+         * installed or updated, or one Chrome will not script. That is worth
+         * reporting rather than discarding, because it is the difference
+         * between "this feed is paused" and "nothing is running here" — and
+         * the popup used to say the first about a tab in the second state.
+         * A reload fixes it, so the message says so.
+         */
+        health = { anchor: "unreachable" };
+        render();
       }
     }
   }

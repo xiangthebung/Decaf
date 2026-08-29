@@ -7,6 +7,18 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **The popup no longer describes work it is not doing.** Three separate states
+  were being answered with the same reassuring sentence. A tab that was already
+  open when Decaf was installed or updated has no Decaf in it until it is
+  reloaded once — and on exactly that tab, where Decaf was demonstrably doing
+  nothing, the popup said "This feed is paused". It now says the tab needs a
+  reload, and says so on the page card as well. A tab Chrome would not identify
+  was reported as a site Decaf does not cover, which turned a failure to find
+  anything out into a confident claim about the page; it now says what actually
+  happened. And the popup used to open, before it had read anything at all, on a
+  card naming a site called "Site" that was "Off", beside a switch labelled "On"
+  that was unchecked — it now states nothing until it knows something.
+
 - **A game board stays a game board wherever the site puts it.** The two fixes
   that stopped Decaf draining LinkedIn's Queens board and marking its cells as
   notification badges were both held behind a check that the address began

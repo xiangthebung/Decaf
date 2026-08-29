@@ -14,7 +14,14 @@ const siteSwitch = (page, key) => page.document.querySelector(`.site[data-site="
 /* ------------------------------------------------------------------ popup -- */
 
 test("the popup shows what Decaf is doing on this page", async () => {
-  const page = await launchExtensionPage("popup.html", { tabUrl: "https://www.youtube.com/" });
+  // `tabReply` is what makes this a tab Decaf is actually running in. Without it
+  // the harness throws "Receiving end does not exist", which is the real state of
+  // a tab that was open before Decaf was installed — and the popup now says so
+  // instead of describing a feed it has no contact with.
+  const page = await launchExtensionPage("popup.html", {
+    tabUrl: "https://www.youtube.com/",
+    tabReply: { anchor: "selector", route: "feed", active: true, hidingFeed: true, placed: true }
+  });
   try {
     assert.equal(page.$("master").checked, true);
     assert.equal(page.$("master-state").textContent, "On");
@@ -54,7 +61,10 @@ test("the popup is honest on a page Decaf does not touch", async () => {
 });
 
 test("the popup describes a media page without claiming it is paused", async () => {
-  const page = await launchExtensionPage("popup.html", { tabUrl: "https://www.youtube.com/watch?v=abc123" });
+  const page = await launchExtensionPage("popup.html", {
+    tabUrl: "https://www.youtube.com/watch?v=abc123",
+    tabReply: { anchor: "none", route: "media", active: true, hidingFeed: false, placed: false }
+  });
   try {
     assert.equal(page.$("site-badge").textContent, "On");
     assert.match(page.$("site-detail").textContent, /^Paused: Home, Shorts, Explore\.$/);

@@ -9,7 +9,9 @@
 const assert = require("node:assert/strict");
 const test = require("node:test");
 
-const { launchExtensionPage, settle, click, toggle } = require("../tools/harness.js");
+const { JSDOM } = require("jsdom");
+
+const { launchExtensionPage, settle, click, toggle, read } = require("../tools/harness.js");
 const D = require("../core.js");
 
 const siteRow = (page, key) => page.document.querySelector(`.site[data-site="${key}"]`);
@@ -315,5 +317,96 @@ test("the lock summary says what is about to be frozen", async () => {
     assert.match(summary, /4 seconds longer/);
   } finally {
     page.close();
+  }
+});
+
+/*
+ * The popup's job is to say what Decaf is doing on the page in front of you, so
+ * the one thing it may never do is describe work it is not doing. Three states
+ * were being collapsed into one reassuring sentence.
+ */
+test("a tab with no Decaf in it is told so, not told its feed is paused", async () => {
+  // No `tabReply`: the harness throws "Receiving end does not exist", which is
+  // exactly what Chrome does for a tab that was already open when Decaf was
+  // installed or updated. Every such tab is in this state until it is reloaded
+  // once, so it is the commonest failure there is — and it used to be the one
+  // the popup was most confident about.
+  const page = await launchExtensionPage("popup.html", { tabUrl: "https://www.youtube.com/" });
+  try {
+    assert.equal(page.$("site-health").hidden, false, "the state is reported at all");
+    assert.match(page.$("site-health").textContent, /Reload this tab/);
+    assert.doesNotMatch(
+      page.$("site-detail").textContent,
+      /This feed is paused/,
+      "nothing is paused here, because nothing is running here"
+    );
+    assert.match(page.$("site-detail").textContent, /has not started on this tab/);
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * A tab Chrome would not identify is not a tab on an unsupported site, and
+ * saying so turned a failure to find anything out into a confident claim about
+ * the page. The two need different words because they need different actions.
+ */
+test("a tab Chrome will not identify is not called an unsupported site", async () => {
+  const page = await launchExtensionPage("popup.html", { tabUrl: "https://www.youtube.com/" });
+  try {
+    page.chrome.tabs.query = async () => {
+      throw new Error("Tabs cannot be queried");
+    };
+    // A settings write is the popup's own re-render trigger, so this exercises
+    // the same `refresh` the page runs on open rather than a private hook.
+    await page.chrome.storage.local.set({ upsideDown: true });
+    await settle(4);
+    assert.equal(page.$("unsupported").hidden, false);
+    assert.match(page.$("unsupported").textContent, /could not tell which page this is/);
+  } finally {
+    page.close();
+  }
+});
+
+/* The count in that sentence is read off the site table rather than typed out. */
+test("the unsupported line counts the sites Decaf actually has", async () => {
+  const page = await launchExtensionPage("popup.html", { tabUrl: "https://example.com/" });
+  try {
+    assert.equal(page.$("unsupported").hidden, false);
+    // A plain substring rather than a built regex: inside a template literal a
+    // backslash-b is the backspace character, not a word boundary, so the
+    // pattern silently stopped being the one that was written.
+    assert.ok(
+      page.$("unsupported").textContent.includes(`${D.SITE_KEYS.length} feed-driven sites`),
+      page.$("unsupported").textContent
+    );
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * Before the settings have been read back, the popup knows nothing about the tab
+ * — so it must not draw a card that says otherwise. It used to open on a site
+ * called "Site" that was "Off", beside a switch labelled "On" that was unchecked.
+ */
+test("the popup asserts nothing about a page before it has read anything", () => {
+  const markup = read("popup.html");
+  const dom = new JSDOM(markup, { url: "chrome-extension://decaf-test/popup.html" });
+  const doc = dom.window.document;
+  try {
+    assert.equal(doc.getElementById("site-card").hasAttribute("hidden"), true,
+      "the site card starts hidden, exactly as #unsupported does");
+    assert.equal(doc.getElementById("unsupported").hasAttribute("hidden"), true);
+    for (const id of ["site-name", "site-badge", "master-state", "unsupported"]) {
+      assert.equal(doc.getElementById(id).textContent.trim(), "",
+        `#${id} states nothing until the settings arrive`);
+    }
+    for (const box of doc.querySelectorAll("input[type=checkbox]")) {
+      assert.equal(box.hasAttribute("checked"), false,
+        "no switch claims to be on before it is known to be");
+    }
+  } finally {
+    dom.window.close();
   }
 });

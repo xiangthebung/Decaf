@@ -14,16 +14,24 @@
              heading along with it. -->
         <h1 class="brand">Decaf</h1>
         <label class="switch">
-          <span class="switch-label" id="master-state">On</span>
+          <!-- Empty, not "On": the switch beside it is unchecked until the
+               settings arrive, and a word that disagrees with the control it
+               labels is worse than no word. -->
+          <span class="switch-label" id="master-state"></span>
           <input id="master" type="checkbox" aria-label="Decaf">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
       </header>
 
-      <section id="site-card" class="card" aria-labelledby="site-name">
+      <!-- Hidden until the first render, exactly as `#unsupported` is. Whichever
+           of the two is wrong for the current tab has to be the one that stays
+           down, and until the settings have been read back both of them are:
+           this card would otherwise open claiming a site called "Site" is "Off",
+           which is a made-up answer to the only question the popup is for. -->
+      <section id="site-card" class="card" aria-labelledby="site-name" hidden>
         <div class="row">
-          <h2 id="site-name">Site</h2>
-          <span id="site-badge" class="badge">Off</span>
+          <h2 id="site-name"></h2>
+          <span id="site-badge" class="badge"></span>
         </div>
         <p id="site-detail" class="detail"></p>
         <p id="site-health" class="detail warn" hidden></p>
@@ -41,7 +49,9 @@
         </div>
       </section>
 
-      <p id="unsupported" class="empty" hidden>Decaf works on 12 feed-driven sites, plus any you add yourself. Open one to see it here.</p>
+      <!-- Text comes from popup.js: the count is read off the site table, and this
+           line also has to be able to say that the tab could not be identified. -->
+      <p id="unsupported" class="empty" hidden></p>
 
       <section id="lock-card" class="card" aria-labelledby="lock-title">
         <h2 id="lock-title">Lock</h2>
