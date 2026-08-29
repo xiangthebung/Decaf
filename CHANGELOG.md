@@ -7,6 +7,18 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **A game board stays a game board wherever the site puts it.** The two fixes
+  that stopped Decaf draining LinkedIn's Queens board and marking its cells as
+  notification badges were both held behind a check that the address began
+  `/games`. That made them exactly as durable as one regular expression written
+  for one site out of twelve: move the prefix and the crowns would have vanished
+  again, with every test for the bug still passing, because every one of them is
+  written against a `/games/` address. A board the site names is now recognised
+  on any page it appears on, because the name is the evidence and nothing else on
+  the web is called that. Guessing a board from its shape — a grid of equally
+  sized square cells, which on a feed is just as likely to be a grid of photos —
+  still happens only on a game page.
+
 - **"Show in color" now shows the picture in colour.** The grant was a list of
   per-site selectors and nothing else, and a list like that goes quietly out of
   date: Instagram's post page has had no `<article>` on it for some time, so the
