@@ -341,6 +341,33 @@
     { right: 96, bottom: 20, classes: ["decaf-pill-aside"] },
     { right: 96, bottom: 96, classes: ["decaf-pill-high", "decaf-pill-aside"] }
   ];
+  /*
+   * What a granted colour is granted *for*: see syncColorMedia.
+   *
+   * Two floors, because one is not enough in either direction. A bound on the
+   * shorter side alone would drop a panorama — 600 by 150 is a picture someone
+   * opened, and a bound tall enough to exclude a rail thumbnail excludes it too.
+   * A bound on area alone lets a long thin strip of site furniture through. Both
+   * together describe the same thing: bigger than the thumbnails and avatars a
+   * page is decorated with, whatever shape it is. A rail thumbnail at 168 by 94
+   * misses on area, an avatar at 150 square misses on area, and a picture on a
+   * page someone opened on purpose clears both by a wide margin.
+   */
+  const MIN_COLOR_MEDIA_SIDE = 100;
+  const MIN_COLOR_MEDIA_AREA = 30000;
+  const COLOR_MEDIA_BUDGET = 600;
+  /** What can *be* the picture. A background image is only ever painted over one. */
+  const COLOR_MEDIA_SELECTOR = "video,img,canvas";
+  /*
+   * ...and what can be painted over it: a poster frame held in front of a video,
+   * a blurred backdrop behind a vertical one. Not `svg`: a play button or a
+   * verified tick sitting on a video is the site's chrome, and chrome stays grey.
+   */
+  const COLOR_COVER_SELECTOR = "video,img,canvas,[style*='background-image']";
+  /** How much of the picture something covers before it counts as over it... */
+  const COLOR_COVER_SHARE = 0.6;
+  /** ...and how much bigger it may be before it is the page behind, not a poster. */
+  const COLOR_COVER_SLACK = 2;
   const ICON_SELECTOR = "svg[aria-label],img[alt]";
   // How far a number may sit inside a control and still be read as its count.
   // Threads nests the number five elements below its like button.
@@ -389,7 +416,8 @@
   const MASKED_ARIA_ATTRIBUTE = "data-decaf-aria";
   const MARK_CLASSES = [
     "decaf-badge", "decaf-feed-container", "decaf-feed-host", "decaf-feed-path",
-    "decaf-comment-list", "decaf-game-board", MASKED_TEXT_CLASS
+    "decaf-comment-list", "decaf-game-board", "decaf-color-media", "decaf-color-path",
+    MASKED_TEXT_CLASS
   ];
 
   /*
@@ -878,11 +906,26 @@
     return Boolean(element?.closest?.(`${GAME_BOARD_SELECTOR},.decaf-game-board`));
   }
 
+  /*
+   * Not gated on `route === "game"`, deliberately.
+   *
+   * It was, and that made the guard only as good as a path regex written for one
+   * site out of twelve: on any path `isGame` did not recognise, a board sitting
+   * right there under its own id had its cells marked as notification badges
+   * again — and "Hide notification counts" turns that mark into `display: none`,
+   * which takes the crowns and the coloured regions off the board together.
+   *
+   * `onGameBoard` already carries its own evidence and does not need propping up
+   * by the route. It matches either a board the site names, which means one thing
+   * and nothing else, or one `syncGameBoard` has already marked — and that mark
+   * is itself only handed to a shape-found grid while the route says game. So the
+   * ambiguous case is still route-gated, one level down, where it belongs.
+   */
   function markBadge(element) {
-    if (route === "game" && onGameBoard(element)) return;
+    if (onGameBoard(element)) return;
     const target = paintedBadge(element);
     if (target.classList.contains("decaf-badge")) return;
-    if (route === "game" && onGameBoard(target)) return;
+    if (onGameBoard(target)) return;
     target.classList.add("decaf-badge");
   }
 
@@ -1961,15 +2004,54 @@
    *
    * LinkedIn names the board on Queens and nowhere else, and every class on the
    * page is a build hash, so the board is found by its shape instead: the square
-   * grid of equally sized square cells. Only ever looked for on a game route, so
-   * a grid of photos on a feed can never be mistaken for one.
+   * grid of equally sized square cells.
+   *
+   * Two kinds of evidence, and they do not deserve the same trust:
+   *
+   *   - a board the site *names* identifies itself. `#queens-game-board` means
+   *     one thing on the web and nothing else is called it, so it is honoured on
+   *     whatever route Decaf thinks it is on;
+   *   - a grid of equally sized square cells does not identify itself at all. On
+   *     a feed it is just as likely to be a grid of photos, so the shape search
+   *     stays behind `route === "game"`.
+   *
+   * Holding *both* behind the route was the real fragility, and it is why this
+   * distinction is now drawn in the code rather than left implicit. `isGame` is a
+   * regex over the path. Gating the named board on it let the weakest evidence
+   * Decaf has overrule the strongest: move LinkedIn's `/games` prefix and the
+   * board — still sitting there under its own id — went back to being drained,
+   * with its cells marked as notification badges, which "Hide notification
+   * counts" turns into `display: none`. The crowns would have vanished exactly
+   * as they did before, and every test written for that bug would still have
+   * passed, because every one of them is on a `/games/` URL.
    */
   function syncGameBoard() {
-    const wanted = active && route === "game";
+    if (!active) {
+      for (const element of document.querySelectorAll(".decaf-game-board")) {
+        element.classList.remove("decaf-game-board");
+      }
+      return;
+    }
+    const wanted = route === "game";
+    /*
+     * Off a game route every mark is dropped and only the named boards are put
+     * straight back, one line below and in the same synchronous pass, so nothing
+     * is ever painted in between. Which is to say: a board found by shape holds
+     * its exemption exactly as long as the route vouches for it, and a board the
+     * site named holds it regardless.
+     *
+     * Written as a clean sweep plus a re-mark rather than as a sweep that skips
+     * the named ones. The two behave identically — `markNamedBoard` restores what
+     * the sweep just took — and of the two only this one has a single place where
+     * a board becomes exempt, which is the place any future rule about it belongs.
+     */
     for (const element of document.querySelectorAll(".decaf-game-board")) {
       if (!wanted) element.classList.remove("decaf-game-board");
     }
-    if (!wanted) return;
+    if (!wanted) {
+      markNamedBoard();
+      return;
+    }
     /*
      * A frame whose whole job is the game is the board.
      *
@@ -1993,16 +2075,10 @@
       }
       return;
     }
+    if (markNamedBoard()) return;
     if (!hasLayout()) return;
     const main = document.querySelector("main") || document.body;
     if (!main || main.querySelector(".decaf-game-board")) return;
-
-    const named = main.querySelector(GAME_BOARD_SELECTOR);
-    if (named) {
-      named.classList.add("decaf-game-board");
-      clearBadgesOn(named);
-      return;
-    }
 
     let looked = 0;
     let best = null;
@@ -2024,6 +2100,28 @@
   }
 
   /**
+   * Mark every board the site names, wherever it is and whatever the route.
+   *
+   * Needs no measurement, which is why it can run before `hasLayout` and on the
+   * first pass: an id is there in the markup from the moment the element is.
+   * Searches the whole document rather than inside `<main>`, because a site that
+   * ships no `<main>` — LinkedIn's game frame does not — would otherwise hide its
+   * own named board from the one check that cannot be wrong about it.
+   *
+   * Returns whether a board was found, so the caller knows not to go on and guess
+   * at one by shape.
+   */
+  function markNamedBoard() {
+    const named = document.querySelectorAll(GAME_BOARD_SELECTOR);
+    for (const board of named) {
+      if (board.classList.contains("decaf-game-board")) continue;
+      board.classList.add("decaf-game-board");
+      clearBadgesOn(board);
+    }
+    return named.length > 0;
+  }
+
+  /**
    * Takes the badge mark off anything inside a board that has just been found.
    *
    * A board found by shape only becomes recognisable once it has been measured,
@@ -2036,6 +2134,100 @@
     }
   }
 
+  /**
+   * Mark what colour was granted for, and the path between it and the document.
+   *
+   * The grant used to live entirely in a list of per-site selectors in the
+   * stylesheet, and a list like that fails in three ways that all look identical
+   * from the outside — the pill goes, the chip says the words, the page stays
+   * grey:
+   *
+   *   - the markup moves underneath it. Instagram's post page has no <article>
+   *     any more, so `main article img` matched nothing at all and asking for
+   *     colour on Instagram did nothing whatsoever;
+   *   - a site someone added themselves has no entry in the list, and never
+   *     could have one;
+   *   - `filter: none` on the picture cannot undo a filter *above* it. A filter
+   *     drains the whole subtree beneath it, so one drained wrapper — a span
+   *     carrying a background image, say — keeps a video grey however many rules
+   *     name the video itself. What is painted *over* it does the same: a poster
+   *     frame stays grey in front of a video in perfect colour. Both look like a
+   *     button that did nothing, and both pass a test that reads the video's own
+   *     computed filter and finds `none`.
+   *
+   * So the picture is measured here rather than guessed at, and the path above it
+   * is marked as well, because the path is what the colour has to travel through.
+   * The marks say *Decaf's drain does not apply here* rather than painting
+   * `filter: none` over the top of everything: a blur the site itself put on a
+   * wrapper is the site's business, and has to survive being shown in colour.
+   */
+  function syncColorMedia() {
+    const wanted = active && route === "media" && colorGranted;
+    if (!wanted) {
+      for (const element of document.querySelectorAll(".decaf-color-media,.decaf-color-path")) {
+        element.classList.remove("decaf-color-media", "decaf-color-path");
+      }
+      return;
+    }
+    if (!hasLayout()) return;
+    const candidates = colorCandidates();
+    const media = primaryMedia(candidates);
+    if (!media) return;
+    media.element.classList.add("decaf-color-media");
+    for (let above = media.element.parentElement; above && above !== root(); above = above.parentElement) {
+      above.classList.add("decaf-color-path");
+    }
+    for (const candidate of candidates) {
+      if (candidate.element === media.element) continue;
+      if (covers(candidate, media)) candidate.element.classList.add("decaf-color-media");
+    }
+  }
+
+  /** Everything on the page that could be a picture, or could be over one, measured once. */
+  function colorCandidates() {
+    const list = [];
+    let looked = 0;
+    for (const element of document.querySelectorAll(COLOR_COVER_SELECTOR)) {
+      if (looked > COLOR_MEDIA_BUDGET) break;
+      looked += 1;
+      if (isOurs(element)) continue;
+      const rect = element.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) continue;
+      list.push({ element, rect, area: rect.width * rect.height });
+    }
+    return list;
+  }
+
+  /**
+   * The one thing a page someone opened on purpose is about: the largest picture
+   * on it, with a video preferred over a still of any size, because the still
+   * covering a player is that player's poster.
+   */
+  function primaryMedia(candidates) {
+    let best = null;
+    for (const candidate of candidates) {
+      const { element, rect } = candidate;
+      if (Math.min(rect.width, rect.height) < MIN_COLOR_MEDIA_SIDE) continue;
+      if (candidate.area < MIN_COLOR_MEDIA_AREA) continue;
+      if (!element.matches(COLOR_MEDIA_SELECTOR)) continue;
+      const rank = element.localName === "video" ? 1 : 0;
+      if (best && (rank < best.rank || (rank === best.rank && candidate.area <= best.area))) continue;
+      best = { ...candidate, rank };
+    }
+    return best;
+  }
+
+  /** True when something is painted across the picture rather than beside it. */
+  function covers(candidate, media) {
+    if (candidate.area > media.area * COLOR_COVER_SLACK) return false;
+    const over = candidate.rect;
+    const picture = media.rect;
+    const width = Math.min(over.right, picture.right) - Math.max(over.left, picture.left);
+    const height = Math.min(over.bottom, picture.bottom) - Math.max(over.top, picture.top);
+    if (width <= 0 || height <= 0) return false;
+    return (width * height) / media.area >= COLOR_COVER_SHARE;
+  }
+
   function syncSurfaces() {
     // A subframe is part of the page, not a page: it gets the grayscale and the
     // masking, and none of the furniture that must exist once per tab.
@@ -2044,6 +2236,7 @@
     syncPassCounter();
     syncCommentPanel();
     syncGameBoard();
+    syncColorMedia();
   }
 
   /* ------------------------------------------------------------- lifecycle -- */

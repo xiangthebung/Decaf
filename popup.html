@@ -14,42 +14,56 @@
              heading along with it. -->
         <h1 class="brand">Decaf</h1>
         <label class="switch">
-          <span class="switch-label" id="master-state">On</span>
+          <!-- Empty, not "On": the switch beside it is unchecked until the
+               settings arrive, and a word that disagrees with the control it
+               labels is worse than no word. -->
+          <span class="switch-label" id="master-state"></span>
           <input id="master" type="checkbox" aria-label="Decaf">
           <span class="switch-track" aria-hidden="true"></span>
         </label>
       </header>
 
-      <section id="site-card" class="card" aria-labelledby="site-name">
+      <!-- Hidden until the first render, exactly as `#unsupported` is. Whichever
+           of the two is wrong for the current tab has to be the one that stays
+           down, and until the settings have been read back both of them are:
+           this card would otherwise open claiming a site called "Site" is "Off",
+           which is a made-up answer to the only question the popup is for. -->
+      <section id="site-card" class="card" aria-labelledby="site-name" hidden>
         <div class="row">
-          <h2 id="site-name">Site</h2>
-          <span id="site-badge" class="badge">Off</span>
+          <h2 id="site-name"></h2>
+          <span id="site-badge" class="badge"></span>
         </div>
         <p id="site-detail" class="detail"></p>
-        <p id="site-health" class="detail warn" hidden></p>
-        <button id="site-enable" class="button primary" type="button" hidden>Turn on here</button>
+        <!-- A live region: this line is filled in after the popup has already been
+             painted, once the tab answers the health probe, so a reader who has
+             finished with the popup would otherwise never learn the feed was not
+             found. -->
+        <p id="site-health" class="detail warn" role="status" aria-live="polite" hidden></p>
+        <button id="site-enable" class="button primary" type="button" data-focus-next="site-disable" hidden>Turn on here</button>
 
         <div id="site-off" class="off-row" hidden>
           <p class="detail">Need this site to behave normally?</p>
           <div id="snooze-choices" class="segmented" role="group" aria-label="Turn Decaf off for a while"></div>
-          <button id="site-disable" class="button quiet" type="button">Off until I turn it back on</button>
+          <button id="site-disable" class="button quiet" type="button" data-focus-next="site-enable">Off until I turn it back on</button>
         </div>
 
         <div id="pass-row" class="pass" hidden>
           <span id="pass-time">Feed open</span>
-          <button id="pass-end" class="button quiet" type="button">Pause it again</button>
+          <button id="pass-end" class="button quiet" type="button" data-focus-next="site-disable">Pause it again</button>
         </div>
       </section>
 
-      <p id="unsupported" class="empty" hidden>Decaf works on 12 feed-driven sites, plus any you add yourself. Open one to see it here.</p>
+      <!-- Text comes from popup.js: the count is read off the site table, and this
+           line also has to be able to say that the tab could not be identified. -->
+      <p id="unsupported" class="empty" hidden></p>
 
       <section id="lock-card" class="card" aria-labelledby="lock-title">
         <h2 id="lock-title">Lock</h2>
         <p id="lock-detail" class="detail">Holds every Decaf setting in place until it ends.</p>
         <ul id="lock-summary" class="summary" hidden></ul>
         <div id="lock-choices" class="segmented" role="radiogroup" aria-label="Lock duration"></div>
-        <button id="lock-button" class="button primary" type="button">Lock</button>
-        <button id="lock-cancel" class="button quiet" type="button" hidden>Cancel</button>
+        <button id="lock-button" class="button primary" type="button" data-focus-next="settings">Lock</button>
+        <button id="lock-cancel" class="button quiet" type="button" data-focus-next="lock-button" hidden>Cancel</button>
       </section>
 
       <p id="passes" class="meter"></p>

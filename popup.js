@@ -8,6 +8,13 @@
   let site = null;
   let route = "";
   let health = null;
+  /*
+   * Set when Chrome could not say what the current tab is. Distinct from "this
+   * is not a site Decaf covers", which is what the popup used to show for it —
+   * turning a failure to find anything out into a confident statement about the
+   * page in front of you.
+   */
+  let tabUnknown = false;
   let chosenHours = D.DEFAULT_LOCK_HOURS;
   let confirmingLock = false;
   let ticker = null;
@@ -23,10 +30,36 @@
   /**
    * Writes only what changed, and refuses anything a running Lock protects.
    * Returns true when the change was saved.
+   *
+   * `next` may be an object, or a function handed the state just read back. It
+   * has to be a function whenever the change is *inside* an object-valued
+   * setting — `sites`, `custom`, `snoozes` — because a patch names whole
+   * top-level keys and `createStoragePatch` compares them whole. Building one of
+   * those from the page's own in-memory copy meant writing every entry it held,
+   * including entries another surface had changed since this page last read:
+   * turn Reddit off in the popup, then LinkedIn off in a settings tab opened ten
+   * minutes earlier, and the settings tab wrote back its own stale `sites` with
+   * Reddit still on. Re-reading `latest` never fixed that on its own, because
+   * the stale object arrived already built.
    */
   async function save(next, note = "") {
-    const latest = await read();
-    const requested = { ...latest, ...next };
+    let latest;
+    try {
+      latest = await read();
+    } catch (_) {
+      /*
+       * The read failed, so there is nothing to compare against and nothing was
+       * written. The switch is still showing whatever it was just dragged to, and
+       * this is the same dangerous direction as a failed write: put the page back
+       * rather than leave it claiming a change that did not happen. This used to
+       * sit outside the try below, so it rejected past the revert and only the
+       * caller's generic note appeared.
+       */
+      render();
+      message("Not saved — Decaf could not read its settings. Try again.");
+      return false;
+    }
+    const requested = { ...latest, ...(typeof next === "function" ? next(latest) : next) };
     const candidate = D.mergeSettings(requested);
     if (D.isLocked(latest) && D.isWeakening(latest, requested)) {
       settings = latest;
@@ -49,7 +82,7 @@
          */
         settings = latest;
         render();
-        message(`Not saved — ${error?.message || "storage is unavailable"}.`);
+        message("Not saved — Decaf could not write to storage. Try again, or reopen this page.");
         return false;
       }
     }
@@ -180,8 +213,37 @@
     $("lock-button").textContent = confirmingLock ? "Confirm lock" : "Lock";
   }
 
+
+  /** On the page, and not inside anything that is hidden. */
+  function reachable(element) {
+    return Boolean(element?.isConnected && !element.closest("[hidden]"));
+  }
+
+  /**
+   * Move the keyboard on when the control it was on has just hidden itself.
+   *
+   * Several controls here do their job by ceasing to exist: turning Decaf on for
+   * a site takes away "Turn on here", confirming a Lock takes away the Lock
+   * button, removing an added site takes away the row it was in. `[hidden]` is
+   * `display: none`, so focus falls to `<body>` — a keyboard user is dropped at
+   * the top of the page, mid-task, with nothing said about why, and on the
+   * settings page that is a long way from where they were.
+   *
+   * Each of those controls names its successor in the markup, so the answer lives
+   * beside the thing it is about rather than in a table here. Called at the end
+   * of every render, which is the only moment the page knows something has gone.
+   */
+  function passFocus(had) {
+    if (!had || had === document.body || reachable(had)) return;
+    // `dataset` survives removal from the document, so a rebuilt row still knows
+    // where its keyboard should go.
+    const next = had.dataset?.focusNext ? $(had.dataset.focusNext) : null;
+    if (reachable(next)) next.focus();
+  }
+
   function render() {
     if (!settings) return;
+    const hadFocus = document.activeElement;
     const locked = D.isLocked(settings);
     const supported = Boolean(site);
     const active = D.isActiveForSite(settings, site);
@@ -199,6 +261,11 @@
 
     $("site-card").hidden = !supported;
     $("unsupported").hidden = supported;
+    // Written here rather than in the markup so the count cannot fall behind the
+    // site table, and so the failure case gets to say something true.
+    $("unsupported").textContent = tabUnknown
+      ? "Decaf could not tell which page this is. Close this and open it again."
+      : `Decaf works on ${D.SITE_KEYS.length} feed-driven sites, plus any you add yourself. Open one to see it here.`;
     if (supported) {
       const label = D.siteLabel(site, settings);
       const summary = D.feedSummary(site, settings);
@@ -207,17 +274,27 @@
       badge.textContent = passUntil ? "Feed open" : snoozeUntil ? "Snoozed" : active ? "On" : "Off";
       badge.classList.toggle("on", active && !passUntil);
       badge.classList.toggle("pass", Boolean(passUntil || snoozeUntil));
+      /*
+       * Whether Decaf is actually running in that tab, which is not the same
+       * question as whether it is switched on for the site. A tab opened before
+       * Decaf was installed, or one left over from before an update, carries no
+       * content script and no reload has happened yet — see the note on the
+       * probe in `refresh`.
+       */
+      const silent = health?.anchor === "unreachable";
       $("site-detail").textContent = snoozeUntil
         ? `Off for another ${D.formatDuration(snoozeUntil - Date.now())}. ${label} behaves normally until then.`
         : !active
           ? `Decaf is off here. ${label} behaves normally.`
-          : !settings.pauseFeeds
-            ? "Grayscale media, no reward counts, calm badges."
-            : passUntil
-              ? `${summary} are open for now.`
-              : route === "feed"
-                ? "This feed is paused. Hold the button on the page to open it for 5 minutes."
-                : `Paused: ${summary}.`;
+          : silent
+            ? `Decaf has not started on this tab, so ${label} is behaving normally.`
+            : !settings.pauseFeeds
+              ? "Grayscale media, no reward counts, calm badges."
+              : passUntil
+                ? `${summary} are open for now.`
+                : route === "feed"
+                  ? "This feed is paused. Hold the button on the page to open it for 5 minutes."
+                  : `Paused: ${summary}.`;
       $("site-enable").hidden = active;
       // A snooze is a weakening, so a running Lock would only refuse it — do not
       // offer buttons that exist to be declined.
@@ -230,13 +307,24 @@
        * no idea whether it actually was. When a site redesign outruns a selector
        * that reads as Decaf lying to your face — and it is also the only channel
        * there is, because nothing here reports anything anywhere.
+       *
+       * There are three answers to that question and the first version of this
+       * only handled two. A tab that says `anchor: "none"` has Decaf running in
+       * it and cannot find the feed. A tab that says nothing at all has no Decaf
+       * in it — and that case fell through to the reassuring branch, so the one
+       * page where Decaf was demonstrably doing nothing was also the page the
+       * popup was most confident about. It is the commoner of the two, because
+       * every tab open at the moment of an install or an update is in it until
+       * it is reloaded once.
        */
       const missing = active && route === "feed" && settings.pauseFeeds && !passUntil && health?.anchor === "none";
       const guessed = health?.anchor === "shape";
-      $("site-health").hidden = !(missing || guessed);
-      $("site-health").textContent = missing
-        ? `Decaf could not find the feed on this page. ${label} may have changed.`
-        : "Found this feed by its shape — the site may have changed.";
+      $("site-health").hidden = !(missing || guessed || silent);
+      $("site-health").textContent = silent
+        ? `Reload this tab to start Decaf on it. It was open before Decaf was.`
+        : missing
+          ? `Decaf could not find the feed on this page. ${label} may have changed.`
+          : "Found this feed by its shape — the site may have changed.";
     }
 
     const totals = D.passTotals(settings);
@@ -245,6 +333,7 @@
       : "";
 
     renderLock();
+    passFocus(hadFocus);
   }
 
   async function refresh() {
@@ -254,9 +343,11 @@
       [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
       site = D.getSite(tab?.url, settings);
       route = D.getRoute(tab?.url, settings);
+      tabUnknown = false;
     } catch (_) {
       site = null;
       route = "";
+      tabUnknown = true;
     }
     /*
      * Paint before asking the tab anything. The health probe answers on the
@@ -271,8 +362,16 @@
         health = await chrome.tabs.sendMessage(tab.id, { type: "decaf-health" });
         if (health) render();
       } catch (_) {
-        // No content script in that tab — a page opened before Decaf was
-        // installed, or one Chrome will not script. Nothing to report.
+        /*
+         * No content script in that tab: a page opened before Decaf was
+         * installed or updated, or one Chrome will not script. That is worth
+         * reporting rather than discarding, because it is the difference
+         * between "this feed is paused" and "nothing is running here" — and
+         * the popup used to say the first about a tab in the second state.
+         * A reload fixes it, so the message says so.
+         */
+        health = { anchor: "unreachable" };
+        render();
       }
     }
   }
@@ -289,18 +388,23 @@
 
   async function onEnableHere() {
     if (!site) return;
-    const next = D.wakeSite(settings, site);
     await save(
-      { enabled: true, snoozes: next.snoozes, ...siteOn(site, true) },
+      (from) => ({ enabled: true, snoozes: D.wakeSite(from, site).snoozes, ...siteOn(site, true)(from) }),
       `Decaf is on for ${D.siteLabel(site, settings)}.`
     );
   }
 
-  /** The patch that turns one site on or off, built or custom. */
+  /**
+   * The patch that turns one site on or off, built or custom. Takes the state to
+   * build on rather than reading `settings`, so it can be applied to whatever
+   * `save` just read back instead of to this page's older copy.
+   */
   function siteOn(key, value) {
-    if (!D.isCustomKey(key)) return { sites: { ...settings.sites, [key]: value } };
-    const host = D.customHost(key);
-    return { custom: { ...settings.custom, [host]: { ...settings.custom[host], enabled: value } } };
+    return (from) => {
+      if (!D.isCustomKey(key)) return { sites: { ...from.sites, [key]: value } };
+      const host = D.customHost(key);
+      return { custom: { ...from.custom, [host]: { ...from.custom[host], enabled: value } } };
+    };
   }
 
   async function onDisableHere() {
@@ -310,9 +414,8 @@
 
   async function onSnooze(minutes) {
     if (!site) return;
-    const next = D.snoozeSite(settings, site, minutes);
     await save(
-      { snoozes: next.snoozes },
+      (from) => ({ snoozes: D.snoozeSite(from, site, minutes).snoozes }),
       `${D.siteLabel(site, settings)} is normal for ${D.formatDuration(minutes * 60000)}.`
     );
   }
@@ -392,7 +495,10 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (!Object.keys(changes).some((key) => Object.hasOwn(D.DEFAULT_SETTINGS, key))) return;
-      refresh().catch(() => {});
+      // Not swallowed: this is the path that keeps two open surfaces agreeing, so
+      // a failure here means the popup is now showing state that storage has
+      // already moved past — which is precisely the thing it must not do quietly.
+      refresh().catch(() => message("Decaf could not read the latest settings."));
     });
     ticker = setInterval(() => {
       if (!settings) return;

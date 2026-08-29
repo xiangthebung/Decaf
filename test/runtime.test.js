@@ -708,3 +708,132 @@ test("the launch page still drains everything but the board", async () => {
     page.close();
   }
 });
+
+/*
+ * The two commits before this one both fixed a false positive on a game board,
+ * and both fixes were held behind `route === "game"` — a regex over the path,
+ * written for one site out of the twelve. That made the guard exactly as durable
+ * as the route table, which is the weakest part of Decaf and the part a redesign
+ * outruns first. Move LinkedIn's `/games` prefix and the board came straight back
+ * out from under the exemption, cells marked as notification badges and drained
+ * of the colour that *is* the puzzle — while every test written for the bug went
+ * on passing, because every one of them is on a `/games/` URL.
+ *
+ * So the evidence is what decides now, not the route. These three tests pin the
+ * line between the two kinds of it.
+ */
+test("a board the site names is spared on a route the table calls something else", async () => {
+  const page = await launchPage({
+    // Not `/games/`: what LinkedIn would serve after any rename of that prefix.
+    url: "https://www.linkedin.com/puzzles/queens/",
+    html: `<body><main>
+      <section id="queens-game-board">
+        <div class="cell unread" style="background:rgb(230,243,136)">
+          <svg aria-label="Queen"><path d="M2 20h20v2H2z"></path></svg>
+        </div>
+      </section>
+      <nav><a href="/notifications"><span class="badge" style="background:rgb(220,40,40)">3</span></a></nav>
+    </main></body>`
+  });
+  try {
+    page.api.runScan();
+    await settle(4);
+    assert.notEqual(page.api.state().route, "game", "the route table does not recognise this path");
+    assert.equal(
+      page.document.querySelector("#queens-game-board").classList.contains("decaf-game-board"),
+      true,
+      "the board names itself, so the route does not get a vote"
+    );
+    assert.equal(
+      page.document.querySelectorAll("#queens-game-board .decaf-badge").length,
+      0,
+      "and nothing on it is a notification badge"
+    );
+    // An exemption, not the badge finder switched off.
+    assert.equal(page.document.querySelectorAll("nav .decaf-badge").length, 1, "a real badge still goes");
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * The other half, and the one that would be quietly lost if the fix above were
+ * done by simply deleting the route check. A grid of equally sized square cells
+ * says nothing about itself — on a feed it is a grid of photos — so the shape
+ * search stays behind the route, and only the *named* board escapes it.
+ */
+test("a grid that only looks like a board is not one off a game route", async () => {
+  // Square, evenly sized and numerous enough to pass the shape search outright:
+  // the point of the test is that it is refused for what it is, not for being
+  // too small to notice. jsdom lays nothing out, so the measurements the search
+  // reads are supplied here — without them the search bails at `hasLayout` and
+  // the test would pass no matter what the code did.
+  const tiles = Array.from({ length: 16 }, (_, index) =>
+    `<div class="tile" style="background:rgb(230,243,136)"><img src="p${index}.png" alt="P${index}"></div>`
+  ).join("");
+  const page = await launchPage({
+    url: "https://www.linkedin.com/feed/",
+    html: `<body><main><div id="photos">${tiles}</div></main></body>`
+  });
+  try {
+    const box = (width, height) => ({
+      width, height, top: 0, left: 0, right: width, bottom: height, x: 0, y: 0
+    });
+    const laidOut = (element, width, height) => {
+      element.getBoundingClientRect = () => box(width, height);
+      element.getClientRects = () => [box(width, height)];
+    };
+    // Giving the page a layout also wakes the notice placement, which asks the
+    // document what is covering the card. jsdom has no `elementFromPoint`; the
+    // caller already treats a null answer as "nothing is in the way", which is
+    // the truth here.
+    page.document.elementFromPoint = () => null;
+    laidOut(page.document.body, 1200, 900);
+    laidOut(page.document.getElementById("photos"), 360, 360);
+    for (const tile of page.document.querySelectorAll(".tile")) laidOut(tile, 45, 45);
+
+    page.api.runScan();
+    await settle(4);
+    assert.equal(
+      page.document.querySelector("#photos").classList.contains("decaf-game-board"),
+      false,
+      "nothing here names itself a board, so nothing here is exempt"
+    );
+  } finally {
+    page.close();
+  }
+});
+
+/*
+ * And the mark itself is only as durable as the evidence behind it. A board found
+ * by shape holds its exemption for as long as the route still vouches for it; a
+ * board the site named keeps it regardless, because nothing about the name went
+ * away when the address bar changed.
+ */
+test("leaving a game route takes back the guessed board but not the named one", async () => {
+  const page = await launchPage({
+    url: "https://www.linkedin.com/feed/",
+    html: `<body><main>
+      <section id="queens-game-board"><div class="cell"></div></section>
+      <div id="guessed"><div class="cell"></div></div>
+    </main></body>`
+  });
+  try {
+    // Stand in for a mark left behind by a scan taken while the route was a game.
+    page.document.getElementById("guessed").classList.add("decaf-game-board");
+    page.api.runScan();
+    await settle(4);
+    assert.equal(
+      page.document.getElementById("guessed").classList.contains("decaf-game-board"),
+      false,
+      "a shape-found board loses its mark once the route stops saying game"
+    );
+    assert.equal(
+      page.document.getElementById("queens-game-board").classList.contains("decaf-game-board"),
+      true,
+      "a named board keeps it"
+    );
+  } finally {
+    page.close();
+  }
+});

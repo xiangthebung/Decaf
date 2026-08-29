@@ -2,8 +2,10 @@
 
 const assert = require("node:assert/strict");
 const fs = require("node:fs");
+const os = require("node:os");
 const path = require("node:path");
 const test = require("node:test");
+const { spawnSync } = require("node:child_process");
 
 const { root, read } = require("../tools/harness.js");
 const D = require("../core.js");
@@ -108,6 +110,110 @@ test("a built dist/ has every file the extension asks for at runtime", (t) => {
     assert.ok(inDist(file), `dist/ is missing ${file}, which background.js loads — rebuild it`);
   }
 });
+
+/**
+ * The build writes into a directory the browser has open.
+ *
+ * An unpacked extension is not copied into the browser — it is read off disk, on
+ * demand, for as long as it stays loaded. So the output directory is the running
+ * extension, and a build that empties it before refilling it is deleting one. It
+ * did: for a few milliseconds of every build there was no manifest.json and no
+ * popup.html, and a toolbar click landing there opens nothing. Refilling then
+ * gave all twenty-three files a new mtime whether or not their bytes had changed,
+ * throwing away everything the browser and the virus scanner had cached and
+ * making the next popup open read the whole extension off disk again. It only
+ * ever went wrong straight after a change, because that is when a build runs.
+ *
+ * These build into a throwaway directory, never dist/ — see the note at the top
+ * of scripts/negative-test.mjs for what happens when a test aims a build at the
+ * extension the developer has loaded.
+ */
+test("a rebuild leaves an already-built directory untouched", () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "decaf-build-"));
+  try {
+    runBuild(out);
+    const first = stamp(out);
+    assert.ok(first.has("manifest.json") && first.has("popup.html"), "the first build produced an extension");
+
+    runBuild(out);
+    const second = stamp(out);
+
+    assert.deepEqual([...second.keys()].sort(), [...first.keys()].sort(), "a rebuild changed which files exist");
+    for (const [name, before] of first) {
+      const after = second.get(name);
+      assert.equal(after.mtimeMs, before.mtimeMs, `${name} was rewritten by a build that had nothing to change`);
+      // A delete-and-recreate gets a new file id even inside one millisecond.
+      if (before.ino) assert.equal(after.ino, before.ino, `${name} was replaced rather than left alone`);
+    }
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+/**
+ * The other half of the same promise: leaving files alone must not mean failing
+ * to fix them. A build still has to replace what was damaged, restore what went
+ * missing, and drop what no longer belongs — while everything it had no reason to
+ * touch keeps the mtime it already had.
+ */
+test("a rebuild still repairs, restores and prunes", () => {
+  const out = fs.mkdtempSync(path.join(os.tmpdir(), "decaf-build-"));
+  try {
+    runBuild(out);
+    const before = stamp(out);
+
+    fs.writeFileSync(path.join(out, "popup.js"), "// not what the source says\n");
+    fs.rmSync(path.join(out, "popup.html"));
+    fs.writeFileSync(path.join(out, "left-over.js"), "from an older build\n");
+    fs.mkdirSync(path.join(out, "notes"));
+    fs.writeFileSync(path.join(out, "notes", "stale.txt"), "also from an older build\n");
+
+    runBuild(out);
+
+    assert.equal(
+      fs.readFileSync(path.join(out, "popup.js"), "utf8"),
+      read("popup.js"),
+      "a damaged file was left damaged"
+    );
+    assert.ok(fs.existsSync(path.join(out, "popup.html")), "a missing file was not restored");
+    assert.ok(!fs.existsSync(path.join(out, "left-over.js")), "a file that no longer belongs was kept");
+    assert.ok(!fs.existsSync(path.join(out, "notes")), "an emptied directory was kept");
+
+    const after = stamp(out);
+    assert.deepEqual([...after.keys()].sort(), [...before.keys()].sort());
+    for (const [name, was] of before) {
+      if (name === "popup.js" || name === "popup.html") continue;
+      assert.equal(after.get(name).mtimeMs, was.mtimeMs, `${name} was rewritten to repair something else`);
+    }
+  } finally {
+    fs.rmSync(out, { recursive: true, force: true });
+  }
+});
+
+function runBuild(out) {
+  const result = spawnSync(
+    process.execPath,
+    [path.join(root, "scripts", "build.mjs"), `--out=${out}`],
+    { encoding: "utf8" }
+  );
+  assert.equal(result.status, 0, `build failed:\n${result.stdout ?? ""}${result.stderr ?? ""}`);
+  return result;
+}
+
+/** Every file in `dir`, with enough of its identity to tell "left alone" from "rewritten". */
+function stamp(dir, prefix = "") {
+  const seen = new Map();
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const name = prefix ? `${prefix}/${entry.name}` : entry.name;
+    if (entry.isDirectory()) {
+      for (const [child, value] of stamp(path.join(dir, entry.name), name)) seen.set(child, value);
+      continue;
+    }
+    const stats = fs.statSync(path.join(dir, entry.name));
+    seen.set(name, { mtimeMs: stats.mtimeMs, ino: stats.ino });
+  }
+  return seen;
+}
 
 test("the sites Decaf knows about are exactly the sites it is injected into", () => {
   const matches = manifest.content_scripts[0].matches;
@@ -351,6 +457,50 @@ function withoutWhere(selector) {
   return out;
 }
 
+/**
+ * A granted colour has two halves, and only one of them can live in a stylesheet.
+ *
+ * The per-site list is only ever as current as the last time somebody read that
+ * site's markup — Instagram's entry named an `<article>` the post page had long
+ * since stopped shipping, so asking for colour there did nothing at all — and no
+ * list can name a site someone added themselves. The other half is the mark
+ * content.js measures onto the page in front of the person, and the two halves
+ * have to stay wired together: a mark nothing honours, or a rule nothing ever
+ * sets, is a button that reports success and changes nothing.
+ */
+test("colour is granted to the picture on the page, not only to a named selector", () => {
+  const contentJs = read("content.js");
+  assert.match(contentJs, /decaf-color-media/, "content.js has to mark what colour was granted for");
+  assert.match(contentJs, /decaf-color-path/, "and the path between the picture and the document");
+
+  const rules = cssRules(contentCss);
+  const honoured = rules.filter((rule) => rule.selectors.some((s) => s.includes(".decaf-color-media")));
+  assert.ok(honoured.length, "something has to honour the mark");
+  assert.match(honoured.map((rule) => rule.body).join("\n"), /filter:\s*none/, "the picture keeps its colour");
+
+  // Same reasoning as a game board: Decaf only ever turns over `:is(img, video)`,
+  // so those are the only transforms it may reset.
+  const flip = honoured.find((rule) => /transform:\s*none/.test(rule.body));
+  assert.ok(flip, "and is turned back the right way up");
+  for (const selector of flip.selectors) {
+    assert.doesNotMatch(selector, /svg|canvas/, `"${selector}" resets a transform Decaf never set`);
+  }
+
+  /*
+   * A filter drains the whole subtree beneath it, so a drain that can land on a
+   * wrapper — anything that may hold the picture rather than be it — has to let a
+   * granted colour past. Naming the video is no use if its parent is still grey.
+   */
+  for (const rule of rules) {
+    if (!/filter:\s*grayscale/.test(rule.body)) continue;
+    for (const selector of rule.selectors) {
+      if (!/^html\.decaf-on (?:span|i)\[style/.test(selector.trim())) continue;
+      assert.match(selector, /:not\([^)]*\.decaf-color-path/,
+        `"${selector}" can sit above the picture, so it has to let the path through`);
+    }
+  }
+});
+
 test("badges are muted by default and only hidden on request", () => {
   assert.match(contentCss, /html\.decaf-on \.decaf-badge \{[^}]*grayscale/);
   assert.match(contentCss, /html\.decaf-hide-badges \.decaf-badge \{\s*display: none/);
@@ -506,4 +656,93 @@ test("the README describes the product that actually ships", () => {
   assert.match(readme, /upside down/i);
   assert.match(readme, /npm test/);
   assert.match(readme, new RegExp(`${D.PASS_MINUTES}-minute|${D.PASS_MINUTES} minutes`));
+});
+
+/* ------------------------------------------------------- documentation --- */
+
+/*
+ * The privacy policy is the one document where a gap is not just untidy: it is
+ * submitted to a store whose reviewer compares it against the manifest, and it
+ * is the answer to "what does this thing do to my browsing". `scripting` had
+ * been in the manifest and missing from the policy, which is exactly the drift
+ * this test exists to make impossible to repeat.
+ */
+test("the privacy policy accounts for every permission the manifest asks for", () => {
+  const policy = read("PRIVACY_POLICY.md");
+  const manifest = JSON.parse(read("manifest.json"));
+  for (const permission of manifest.permissions) {
+    assert.ok(
+      policy.includes(`\`${permission}\``),
+      `PRIVACY_POLICY.md never mentions the \`${permission}\` permission`
+    );
+  }
+  if (manifest.optional_host_permissions?.length) {
+    assert.match(
+      policy,
+      /site you add yourself/i,
+      "the policy should say that host access is asked for per site"
+    );
+  }
+});
+
+/*
+ * The policy invites the reader to check this rather than take it on trust, so
+ * the check may as well run. `importScripts("core.js")` is a local file and not
+ * a network call, which is why the pattern insists on a scheme.
+ */
+test("the extension makes no network requests, as the policy says", () => {
+  for (const file of EXTENSION_FILES) {
+    const source = read(file);
+    assert.doesNotMatch(source, /\bfetch\s*\(/, `${file} calls fetch`);
+    assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|EventSource/, `${file} opens a connection`);
+    assert.doesNotMatch(source, /importScripts\s*\(\s*["'`]https?:/, `${file} loads remote code`);
+  }
+  assert.match(read("PRIVACY_POLICY.md"), /no network activity/i);
+});
+
+/*
+ * A shortcut nobody has written down is a feature nobody has. Both of these are
+ * in the manifest and were in no document at all.
+ */
+test("every keyboard shortcut the manifest declares is written down", () => {
+  const readme = read("README.md");
+  const manifest = JSON.parse(read("manifest.json"));
+  const commands = Object.values(manifest.commands || {});
+  assert.ok(commands.length, "there are commands to document");
+  for (const command of commands) {
+    const keys = command.suggested_key?.default;
+    if (!keys) continue;
+    assert.ok(readme.includes(keys), `README never mentions the ${keys} shortcut`);
+  }
+});
+
+/* Every file the documentation points at should be a file that exists. */
+test("the documentation does not name files that are gone", () => {
+  const docs = ["README.md", "PRIVACY_POLICY.md", "CHANGELOG.md", "STORE_LISTING.md", "STATE.md"];
+  const named = /(?:^|[\s(`"'])((?:tools|scripts|test|icons)\/[A-Za-z0-9_.-]+\.[a-z]+)/g;
+  for (const doc of docs) {
+    for (const [, file] of read(doc).matchAll(named)) {
+      assert.ok(
+        fs.existsSync(path.join(root, file)),
+        `${doc} refers to ${file}, which does not exist`
+      );
+    }
+  }
+});
+
+/*
+ * `STATE.md` is where the volatile claims live, so it is the document most able
+ * to go quietly wrong. The npm scripts it tells people to run are the part a
+ * rename would break without a word.
+ */
+test("every command the state document names is a command that exists", () => {
+  const state = read("STATE.md");
+  const scripts = JSON.parse(read("package.json")).scripts;
+  for (const [, name] of state.matchAll(/`npm run ([a-z:]+)`/g)) {
+    assert.ok(Object.hasOwn(scripts, name), `STATE.md names \`npm run ${name}\`, which package.json does not have`);
+  }
+  for (const [, name] of state.matchAll(/`npm ([a-z]+)`/g)) {
+    if (name === "run") continue;
+    assert.ok(Object.hasOwn(scripts, name), `STATE.md names \`npm ${name}\`, which package.json does not have`);
+  }
 });

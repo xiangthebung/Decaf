@@ -7,6 +7,110 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **A refused address says so on the field it is about.** The message floated
+  free of the box you typed in: nothing connected the two, the field went on
+  reporting itself as valid, and the keyboard was left past the thing that needed
+  fixing. It now marks the field and puts the keyboard back on it.
+
+- **A warning that arrives late is announced.** The line that says Decaf could
+  not find the feed is filled in after the popup has been drawn, once the page
+  answers, so anyone reading rather than looking never heard it.
+
+- **Failures that were being swallowed now say something.** A refresh that could
+  not read the settings left the page quietly disagreeing with what was stored. A
+  site permission Chrome declined to give back was passed over in silence, on the
+  one screen that ends with a promise about what Decaf can reach.
+
+- **The privacy policy names every permission Decaf asks for.** `scripting` was
+  in the manifest and absent from the policy, which is the one document where
+  that gap matters most. The policy is also now exact about what the content
+  scripts look at: as well as text and accessible labels, they measure the size,
+  position and background colour of elements, because that is how a notification
+  badge is told from an ordinary part of the page.
+
+- **The two keyboard shortcuts are written down.** `Alt+Shift+D` opens Decaf and
+  `Alt+Shift+S` opens its settings. Both have been in the extension since it
+  shipped and were in no document at all.
+
+- **The keyboard is not dropped when a button does its job.** Several controls in
+  Decaf work by disappearing: turning it on for a site takes away "Turn on here",
+  confirming a Lock takes away the Lock button, removing an added site takes away
+  the row it was in. Each of those left the keyboard on nothing, at the top of
+  the page, with no announcement — worst on the settings page, which is long.
+  Every one of them now hands the keyboard to the control that took its place.
+
+- **Two open Decaf windows no longer undo each other.** A settings tab left open
+  while you changed something in the popup would, on its next switch, write back
+  everything it had been holding since it was opened — so turning LinkedIn off in
+  the settings tab could quietly turn Reddit back on. Changes are now written
+  against what storage says at the moment of the write rather than against
+  whatever the page last read.
+
+- **A switch no longer keeps a change that was never saved.** The failed-write
+  path was careful to put the page back; the failed-*read* path was not, and left
+  the switch showing a change that had not reached storage. Both now behave the
+  same way. Chrome's own error text has also stopped appearing on screen: those
+  strings are written for developers, and "QUOTA_BYTES quota exceeded" is not an
+  answer to anybody.
+
+- **A site you added yourself cannot be added twice.** The check that catches a
+  duplicate only ever knew the twelve sites built in, so re-typing the address of
+  a site you had added went straight past it, asked Chrome again for a permission
+  it already held, and then wrote the entry fresh — which switched a site you had
+  deliberately turned off back on, and reset its name to the bare address, while
+  the page said it had been added. A `www.` spelling of a site already on the
+  list is now recognised as the same site too.
+
+- **Reset says why it is unavailable during a Lock.** It was the one control a
+  Lock holds that used a real `disabled`, so it dropped out of the keyboard order
+  and out of a screen reader entirely — and because a disabled button fires no
+  click in a browser, the message explaining that a Lock was on could never
+  actually appear. It behaves like every other held control now: still reachable,
+  still answers, and says what is holding it.
+
+- **Two controls are legible again.** The address example in the add-a-site box
+  was dimmed twice over and sat at 2.96:1, below what body text needs. A switch
+  held by a Lock had its whole outline dimmed to 1.9:1, under what a control
+  boundary needs — and since that switch is still focusable and still operable,
+  the exemption for an inactive control never applied to it. The outline now
+  stays at full strength and only the surface inside it reads as held.
+
+- **The popup no longer describes work it is not doing.** Three separate states
+  were being answered with the same reassuring sentence. A tab that was already
+  open when Decaf was installed or updated has no Decaf in it until it is
+  reloaded once — and on exactly that tab, where Decaf was demonstrably doing
+  nothing, the popup said "This feed is paused". It now says the tab needs a
+  reload, and says so on the page card as well. A tab Chrome would not identify
+  was reported as a site Decaf does not cover, which turned a failure to find
+  anything out into a confident claim about the page; it now says what actually
+  happened. And the popup used to open, before it had read anything at all, on a
+  card naming a site called "Site" that was "Off", beside a switch labelled "On"
+  that was unchecked — it now states nothing until it knows something.
+
+- **A game board stays a game board wherever the site puts it.** The two fixes
+  that stopped Decaf draining LinkedIn's Queens board and marking its cells as
+  notification badges were both held behind a check that the address began
+  `/games`. That made them exactly as durable as one regular expression written
+  for one site out of twelve: move the prefix and the crowns would have vanished
+  again, with every test for the bug still passing, because every one of them is
+  written against a `/games/` address. A board the site names is now recognised
+  on any page it appears on, because the name is the evidence and nothing else on
+  the web is called that. Guessing a board from its shape — a grid of equally
+  sized square cells, which on a feed is just as likely to be a grid of photos —
+  still happens only on a game page.
+
+- **"Show in color" now shows the picture in colour.** The grant was a list of
+  per-site selectors and nothing else, and a list like that goes quietly out of
+  date: Instagram's post page has had no `<article>` on it for some time, so the
+  two rules naming one matched nothing and asking for colour on Instagram had
+  never once worked. A site you added yourself had no entry at all, and never
+  could have. And even where the rule was right, a filter drains everything
+  beneath it — one wrapper above a video kept the video grey, and a poster frame
+  held in front of it stayed grey over a video already in full colour. All three
+  look identical from where you are sitting: the offer disappears, the page does
+  not change. Decaf now measures the picture on the page in front of you, and
+  shows that one, along with whatever is painted across it.
+
 - **Reward counts written in camelCase are masked again.** Bounding the reward words so `view` stopped matching `preview` also blinded Decaf to every name written in camelCase — which is how styled-components name things. TikTok labels each count on a video page that way, and fourteen of them a page were left showing. Only the live audit saw it: every unit test used hyphenated or lowercase class names.
 
 - **Decaf no longer empties a conversation.** Facebook's Marketplace was matched

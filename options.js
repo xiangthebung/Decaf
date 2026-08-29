@@ -36,9 +36,27 @@
     return D.mergeSettings(await chrome.storage.local.get(D.DEFAULT_SETTINGS));
   }
 
+  /**
+   * Writes only what changed, and refuses anything a running Lock protects.
+   *
+   * `next` may be an object, or a function handed the state just read back — see
+   * the longer note on the popup's copy. Anything that changes one entry inside
+   * `sites`, `custom` or `snoozes` must be a function, because a patch names the
+   * whole key and building it from this page's older copy writes back every
+   * other entry along with it, undoing whatever another surface changed since.
+   */
   async function save(next, note = "") {
-    const latest = await read();
-    const requested = { ...latest, ...next };
+    let latest;
+    try {
+      latest = await read();
+    } catch (_) {
+      // Nothing was written, and the switch is showing what it was just dragged
+      // to. Put the page back, exactly as a failed write does.
+      render();
+      toast("Not saved — Decaf could not read its settings. Try again.");
+      return false;
+    }
+    const requested = { ...latest, ...(typeof next === "function" ? next(latest) : next) };
     const candidate = D.mergeSettings(requested);
     if (D.isLocked(latest) && D.isWeakening(latest, requested)) {
       settings = latest;
@@ -57,7 +75,7 @@
         // that was never written.
         settings = latest;
         render();
-        toast(`Not saved — ${error?.message || "storage is unavailable"}.`);
+        toast("Not saved — Decaf could not write to storage. Try again, or reopen this page.");
         return false;
       }
     }
@@ -128,6 +146,11 @@
       remove.className = "button quiet remove";
       remove.textContent = "Remove";
       remove.setAttribute("aria-label", `Remove ${label}`);
+      // The whole list is rebuilt after a removal, so this button is gone by the
+      // time the render finishes. `dataset` survives on the detached element, so
+      // `passFocus` can still read where the keyboard should land: the field you
+      // would use to add another.
+      remove.dataset.focusNext = "add-host";
       remove.addEventListener("click", (event) => {
         event.preventDefault();
         onRemoveCustom(key).catch(() => toast("That change could not be saved."));
@@ -138,13 +161,23 @@
     return row;
   }
 
+  /** Built against whatever `save` read back, never against this page's copy. */
   function sitePatch(key, value) {
-    if (!D.isCustomKey(key)) return { sites: { ...settings.sites, [key]: value } };
-    const host = D.customHost(key);
-    return { custom: { ...settings.custom, [host]: { ...settings.custom[host], enabled: value } } };
+    return (from) => {
+      if (!D.isCustomKey(key)) return { sites: { ...from.sites, [key]: value } };
+      const host = D.customHost(key);
+      return { custom: { ...from.custom, [host]: { ...from.custom[host], enabled: value } } };
+    };
   }
 
   function buildSites() {
+    /*
+     * The rebuild is where a row actually dies, and it happens after `save` has
+     * already re-rendered — so by the time the next render runs, focus is on
+     * `<body>` and there is nothing left to reason about. The handover has to be
+     * made here, at the moment the element is detached.
+     */
+    const hadFocus = document.activeElement;
     const container = $("sites");
     container.textContent = "";
     siteInputs.clear();
@@ -163,6 +196,7 @@
         removable: true
       }));
     }
+    passFocus(hadFocus);
   }
 
   /**
@@ -205,6 +239,23 @@
       button.setAttribute("aria-checked", String(checked));
       button.tabIndex = checked ? 0 : -1;
     }
+    /*
+     * If nothing matched, every button here would be `tabIndex = -1` and the
+     * group would be unreachable by keyboard entirely.
+     *
+     * Not reachable today: `chosenHours` starts at `DEFAULT_LOCK_HOURS`, which is
+     * one of `LOCK_DURATIONS`, and only ever changes to another of them. So this
+     * is deliberately untested — a test written for it could only pass
+     * vacuously, and an assertion that cannot fail is worse than none, because it
+     * advertises cover that is not there. It is here because the popup's copy of
+     * this function has carried it from the start and this one had drifted
+     * without it, and because three lines is a cheap price for a control that
+     * nobody could otherwise operate.
+     */
+    if (!Array.from(container.children).some((button) => button.tabIndex === 0)) {
+      const first = container.firstElementChild;
+      if (first) first.tabIndex = 0;
+    }
   }
 
   function lockSummary() {
@@ -219,8 +270,37 @@
     ];
   }
 
+
+  /** On the page, and not inside anything that is hidden. */
+  function reachable(element) {
+    return Boolean(element?.isConnected && !element.closest("[hidden]"));
+  }
+
+  /**
+   * Move the keyboard on when the control it was on has just hidden itself.
+   *
+   * Several controls here do their job by ceasing to exist: turning Decaf on for
+   * a site takes away "Turn on here", confirming a Lock takes away the Lock
+   * button, removing an added site takes away the row it was in. `[hidden]` is
+   * `display: none`, so focus falls to `<body>` — a keyboard user is dropped at
+   * the top of the page, mid-task, with nothing said about why, and on the
+   * settings page that is a long way from where they were.
+   *
+   * Each of those controls names its successor in the markup, so the answer lives
+   * beside the thing it is about rather than in a table here. Called at the end
+   * of every render, which is the only moment the page knows something has gone.
+   */
+  function passFocus(had) {
+    if (!had || had === document.body || reachable(had)) return;
+    // `dataset` survives removal from the document, so a rebuilt row still knows
+    // where its keyboard should go.
+    const next = had.dataset?.focusNext ? $(had.dataset.focusNext) : null;
+    if (reachable(next)) next.focus();
+  }
+
   function render() {
     if (!settings) return;
+    const hadFocus = document.activeElement;
     const locked = D.isLocked(settings);
 
     const master = $("master");
@@ -282,7 +362,21 @@
       : "No passes yet.";
 
     $("intro").hidden = Boolean(settings.seenIntro);
-    $("reset").disabled = locked;
+    /*
+     * `aria-disabled`, like every other control a Lock holds — this one was the
+     * exception and it broke three things at once. A `disabled` button leaves the
+     * tab order, so the one control that carries the reason for its own
+     * unavailability was the one a screen reader never reached, which is exactly
+     * the failure the comments on the switches above say was fixed. It also
+     * fires no `click` in a real browser, so the "Lock is on until it ends."
+     * branch in `onReset` was dead code everywhere except the test — jsdom
+     * dispatches click on disabled elements, so the test passed on behaviour
+     * Chrome will not produce. And a mouse user got a greyed-out button with no
+     * explanation at all.
+     */
+    $("reset").setAttribute("aria-disabled", String(locked));
+    $("reset").setAttribute("aria-describedby", locked ? "lock-detail" : "");
+    passFocus(hadFocus);
   }
 
   async function refresh() {
@@ -311,21 +405,52 @@
    * show every person who installs Decaf a warning about every site they will
    * ever visit, for a feature most of them will never use.
    */
+  /**
+   * Report a rejected address on the field it is about.
+   *
+   * The message was announced once and then floated free of the input: nothing
+   * tied the two together, the field went on reporting itself as valid, and the
+   * keyboard was left on the Add button with the reason for the refusal above and
+   * behind it. `aria-invalid` and the focus move are what make the message
+   * findable again by someone who did not catch it the first time.
+   */
+  function addError(text) {
+    $("add-error").textContent = text;
+    $("add-host").setAttribute("aria-invalid", "true");
+    $("add-host").focus();
+  }
+
   async function onAddSite(event) {
     event.preventDefault();
     $("add-error").textContent = "";
+    $("add-host").removeAttribute("aria-invalid");
     const raw = $("add-host").value;
     const host = D.asHost(raw);
     if (!host) {
-      $("add-error").textContent = "That does not look like a website address.";
+      addError("That does not look like a website address.");
       return;
     }
-    if (D.getSite(`https://${host}/`)) {
-      $("add-error").textContent = "Decaf already covers that one — it is in the list above.";
+    /*
+     * `settings` is what makes this check see the sites you added yourself:
+     * without it `getSite` only knows the twelve built in, so re-adding one of
+     * your own sailed past here, asked Chrome for a permission it already had,
+     * and then went through `addCustomSite` — which writes the entry fresh. A
+     * site you had deliberately switched off came back on, its label reset to
+     * the bare host, and the page said "added" about something that had been
+     * there all along.
+     *
+     * Passing it also catches `www.example.com` against an entry added as
+     * `example.com`, which `getSite` already knows are the same site.
+     */
+    const existing = D.getSite(`https://${host}/`, settings);
+    if (existing) {
+      addError(D.isCustomKey(existing)
+        ? "You have added that one already — it is in the list above."
+        : "Decaf already covers that one — it is in the list above.");
       return;
     }
     if (Object.keys(settings.custom).length >= D.MAX_CUSTOM_SITES) {
-      $("add-error").textContent = `Decaf holds ${D.MAX_CUSTOM_SITES} added sites at a time.`;
+      addError(`Decaf holds ${D.MAX_CUSTOM_SITES} added sites at a time.`);
       return;
     }
     const origins = [D.customMatch(host)];
@@ -333,19 +458,21 @@
     try {
       granted = await chrome.permissions.request({ origins });
     } catch (error) {
-      $("add-error").textContent = `Chrome refused that address — ${error?.message || "try another"}.`;
+      addError("Chrome refused that address. Try another.");
       return;
     }
     if (!granted) {
-      $("add-error").textContent = "Decaf needs permission for that site to do anything on it.";
+      addError("Decaf needs permission for that site to do anything on it.");
       return;
     }
-    const next = D.addCustomSite(settings, host);
-    if (!Object.hasOwn(next.custom, host)) {
-      $("add-error").textContent = "That address could not be added.";
+    if (!Object.hasOwn(D.addCustomSite(settings, host).custom, host)) {
+      addError("That address could not be added.");
       return;
     }
-    const saved = await save({ custom: next.custom }, `${host} added. Open it to see Decaf there.`);
+    const saved = await save(
+      (from) => ({ custom: D.addCustomSite(from, host).custom }),
+      `${host} added. Open it to see Decaf there.`
+    );
     if (saved) {
       $("add-host").value = "";
       buildSites();
@@ -356,14 +483,20 @@
   async function onRemoveCustom(key) {
     const host = D.customHost(key);
     if (!host) return;
-    const next = D.removeCustomSite(settings, host);
-    const saved = await save({ custom: next.custom }, `${host} removed.`);
+    const saved = await save((from) => ({ custom: D.removeCustomSite(from, host).custom }), `${host} removed.`);
     if (!saved) return;
     try {
       await chrome.permissions.remove({ origins: [D.customMatch(host)] });
     } catch (_) {
-      // Chrome keeps the grant; nothing runs there because the site is gone
-      // from the list and the content script is unregistered with it.
+      /*
+       * Nothing of Decaf's runs there any more — the site is off the list and its
+       * content script is unregistered with it — but Chrome is still holding a
+       * host permission the person has just asked to give back, and no screen
+       * anywhere lists the grants that are being held. Staying quiet about that
+       * is the wrong call for an extension whose settings page ends with a
+       * promise about what it can reach.
+       */
+      toast(`${host} removed, but Chrome kept its site permission. Remove it under Decaf at chrome://extensions.`);
     }
     buildSites();
     render();
@@ -457,7 +590,9 @@
     chrome.storage.onChanged.addListener((changes, area) => {
       if (area !== "local") return;
       if (!Object.keys(changes).some((key) => Object.hasOwn(D.DEFAULT_SETTINGS, key))) return;
-      refresh().catch(() => {});
+      // See the note on the popup's copy: a silent failure here leaves the page
+      // disagreeing with storage and saying nothing about it.
+      refresh().catch(() => toast("Decaf could not read the latest settings."));
     });
     ticker = setInterval(() => {
       if (settings && D.isLocked(settings)) render();

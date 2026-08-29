@@ -65,6 +65,25 @@ Four switches, one list, one commitment.
 
 Everything applies the moment you change it. There is no Save button and no draft state.
 
+## Keyboard
+
+Two shortcuts, both changeable at `chrome://extensions/shortcuts`:
+
+| Keys | What it does |
+| --- | --- |
+| `Alt+Shift+D` | Open Decaf |
+| `Alt+Shift+S` | Open Decaf settings |
+
+Both extension pages are usable without a mouse. Every switch is a real
+checkbox, the Lock durations are a radiogroup with one tab stop and arrow keys
+between the options, and a control that disappears when you use it hands the
+keyboard to whatever replaced it rather than dropping it on the page. A control
+a Lock is holding stays in the tab order and says what is holding it, instead of
+going quiet — a switch nobody can reach is not a switch anyone can be told about.
+
+The hold on a paused feed works with Space or Enter on the focused button, and
+needs a sustained press. See Known limits if that is not workable for you.
+
 ## Privacy
 
 - Settings live in `chrome.storage.local` on this device. Nothing syncs, nothing leaves.
@@ -148,6 +167,13 @@ navigations — because most of Decaf is CSS and a selector in a stylesheet prov
 nothing about whether it matches.
 
 `tools/audit.js` is the check that matters after a redesign. For each site it opens the feed and then one post, and reports the card's width, feed items still showing, comment threads, rails, red badges, playing video, and every number left on the page — the last one as a note, so a count Decaf's own rules cannot see is still visible to a human reading the output. On Reddit it also reports how much of the thread the cap left behind, and fails if the answer is gone as loudly as it fails if the scroll is still there.
+
+`STATE.md` holds everything with a date on it: what each verification command
+actually proves, the numbers they last reported, what is *not* verified and what
+it would take, the ideas already tried and rejected, and the traps. It is
+deliberately the only volatile document — this file is meant to stay true across
+sessions, and the bug ledger lives in the commit messages, attached to the diffs
+they describe, where it cannot drift away from them.
 
 | File | Role |
 | --- | --- |

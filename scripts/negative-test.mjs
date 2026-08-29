@@ -17,9 +17,12 @@
  * Two things it is careful about, both learned the hard way.
  *
  * It builds into a throwaway directory rather than dist/. The point of this test is
- * to assemble a *broken* extension, and a build first empties its output and then
- * refills it — so aimed at dist/, this left the working build missing exactly the
- * icon it had just removed, and nothing put it back. `node --test` discovers this
+ * to assemble a *broken* extension, and a build deletes whatever its output holds
+ * that RUNTIME_FILES no longer names — so aimed at dist/, this left the working
+ * build missing exactly the icon it had just removed, and nothing put it back. That
+ * was true when the build emptied its output wholesale and it is still true now
+ * that it only prunes, because the dropped icon is precisely what gets pruned.
+ * `node --test` discovers this
  * file on its own (the name matches its patterns), so every `npm test` quietly
  * corrupted dist/: the artifact `npm run zip` packages, the one the README tells
  * people to load, and the one the browser tests run against. The symptom was the
