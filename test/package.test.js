@@ -657,3 +657,75 @@ test("the README describes the product that actually ships", () => {
   assert.match(readme, /npm test/);
   assert.match(readme, new RegExp(`${D.PASS_MINUTES}-minute|${D.PASS_MINUTES} minutes`));
 });
+
+/* ------------------------------------------------------- documentation --- */
+
+/*
+ * The privacy policy is the one document where a gap is not just untidy: it is
+ * submitted to a store whose reviewer compares it against the manifest, and it
+ * is the answer to "what does this thing do to my browsing". `scripting` had
+ * been in the manifest and missing from the policy, which is exactly the drift
+ * this test exists to make impossible to repeat.
+ */
+test("the privacy policy accounts for every permission the manifest asks for", () => {
+  const policy = read("PRIVACY_POLICY.md");
+  const manifest = JSON.parse(read("manifest.json"));
+  for (const permission of manifest.permissions) {
+    assert.ok(
+      policy.includes(`\`${permission}\``),
+      `PRIVACY_POLICY.md never mentions the \`${permission}\` permission`
+    );
+  }
+  if (manifest.optional_host_permissions?.length) {
+    assert.match(
+      policy,
+      /site you add yourself/i,
+      "the policy should say that host access is asked for per site"
+    );
+  }
+});
+
+/*
+ * The policy invites the reader to check this rather than take it on trust, so
+ * the check may as well run. `importScripts("core.js")` is a local file and not
+ * a network call, which is why the pattern insists on a scheme.
+ */
+test("the extension makes no network requests, as the policy says", () => {
+  for (const file of EXTENSION_FILES) {
+    const source = read(file);
+    assert.doesNotMatch(source, /\bfetch\s*\(/, `${file} calls fetch`);
+    assert.doesNotMatch(source, /XMLHttpRequest|sendBeacon|WebSocket|EventSource/, `${file} opens a connection`);
+    assert.doesNotMatch(source, /importScripts\s*\(\s*["'`]https?:/, `${file} loads remote code`);
+  }
+  assert.match(read("PRIVACY_POLICY.md"), /no network activity/i);
+});
+
+/*
+ * A shortcut nobody has written down is a feature nobody has. Both of these are
+ * in the manifest and were in no document at all.
+ */
+test("every keyboard shortcut the manifest declares is written down", () => {
+  const readme = read("README.md");
+  const manifest = JSON.parse(read("manifest.json"));
+  const commands = Object.values(manifest.commands || {});
+  assert.ok(commands.length, "there are commands to document");
+  for (const command of commands) {
+    const keys = command.suggested_key?.default;
+    if (!keys) continue;
+    assert.ok(readme.includes(keys), `README never mentions the ${keys} shortcut`);
+  }
+});
+
+/* Every file the documentation points at should be a file that exists. */
+test("the documentation does not name files that are gone", () => {
+  const docs = ["README.md", "PRIVACY_POLICY.md", "CHANGELOG.md", "STORE_LISTING.md"];
+  const named = /(?:^|[\s(`"'])((?:tools|scripts|test|icons)\/[A-Za-z0-9_.-]+\.[a-z]+)/g;
+  for (const doc of docs) {
+    for (const [, file] of read(doc).matchAll(named)) {
+      assert.ok(
+        fs.existsSync(path.join(root, file)),
+        `${doc} refers to ${file}, which does not exist`
+      );
+    }
+  }
+});

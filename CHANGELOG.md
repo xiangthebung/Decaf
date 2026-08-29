@@ -7,6 +7,17 @@ person using Decaf, not what changed in the code.
 
 ### Fixed
 
+- **The privacy policy names every permission Decaf asks for.** `scripting` was
+  in the manifest and absent from the policy, which is the one document where
+  that gap matters most. The policy is also now exact about what the content
+  scripts look at: as well as text and accessible labels, they measure the size,
+  position and background colour of elements, because that is how a notification
+  badge is told from an ordinary part of the page.
+
+- **The two keyboard shortcuts are written down.** `Alt+Shift+D` opens Decaf and
+  `Alt+Shift+S` opens its settings. Both have been in the extension since it
+  shipped and were in no document at all.
+
 - **The keyboard is not dropped when a button does its job.** Several controls in
   Decaf work by disappearing: turning it on for a site takes away "Turn on here",
   confirming a Lock takes away the Lock button, removing an added site takes away

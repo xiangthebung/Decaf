@@ -65,6 +65,25 @@ Four switches, one list, one commitment.
 
 Everything applies the moment you change it. There is no Save button and no draft state.
 
+## Keyboard
+
+Two shortcuts, both changeable at `chrome://extensions/shortcuts`:
+
+| Keys | What it does |
+| --- | --- |
+| `Alt+Shift+D` | Open Decaf |
+| `Alt+Shift+S` | Open Decaf settings |
+
+Both extension pages are usable without a mouse. Every switch is a real
+checkbox, the Lock durations are a radiogroup with one tab stop and arrow keys
+between the options, and a control that disappears when you use it hands the
+keyboard to whatever replaced it rather than dropping it on the page. A control
+a Lock is holding stays in the tab order and says what is holding it, instead of
+going quiet — a switch nobody can reach is not a switch anyone can be told about.
+
+The hold on a paused feed works with Space or Enter on the focused button, and
+needs a sustained press. See Known limits if that is not workable for you.
+
 ## Privacy
 
 - Settings live in `chrome.storage.local` on this device. Nothing syncs, nothing leaves.

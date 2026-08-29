@@ -25,7 +25,7 @@ There is no browsing history, no page content, and no list of what you looked at
 
 Decaf's content scripts run on the twelve hosts listed in its manifest, plus any site you have added yourself and granted permission for, and nowhere else. It does not hold a `tabs` permission and cannot see the pages you visit on any other site.
 
-On those twelve, it reads the page in order to change it: the address, so it can tell a feed apart from a page you opened on purpose; and the text and accessible labels of elements, so it can find the reward numbers. Sites write those numbers in every shape there is — the word inside the number, beside it, in front of it, on the icon next to it, or nowhere at all — which is why the matching has to look at labels rather than just at text.
+On those twelve, it reads the page in order to change it: the address, so it can tell a feed apart from a page you opened on purpose; the text and accessible labels of elements, so it can find the reward numbers; and the size, position and background colour of elements, so it can tell a notification badge from an ordinary part of the page and find the picture on a page you opened. Sites write those numbers in every shape there is — the word inside the number, beside it, in front of it, on the icon next to it, or nowhere at all — which is why the matching has to look at labels rather than just at text, and why some of it has to look at what an element actually renders as.
 
 None of what it reads is stored, and none of it is transmitted. It is examined, the element is rewritten, and that is the end of it.
 
@@ -40,6 +40,8 @@ There is nothing to pay for, so there is no payment processor and no billing ema
 - **`storage`** — the settings and the pass count above.
 - **`activeTab`** — so the popup can tell which of the twelve sites you are currently on, and show the right switch. It grants no access to any other tab.
 - **`alarms`** — to notice when a Lock ends. A Lock has to expire on time even if the browser was closed in between, and an alarm is how a service worker finds out.
+- **`scripting`** — for two things, both of them Decaf's own files. Tabs that were already open when Decaf was installed or updated have no copy of it running in them, and this is what puts one there instead of leaving those tabs dead until you happen to reload them. It is also how a site you add yourself gets a content script registered for it. No code is fetched from anywhere; the only files it ever runs are the ones in this repository.
+- **Optional access to a site you add yourself** — asked for one origin at a time, at the moment you add that site, and never in advance. Removing the site gives the permission back.
 - **Content scripts on twelve hosts** — the only way to change a page is to be on it. Messaging apps are deliberately excluded: a conversation is not a feed.
 
 ## Retention and deletion
