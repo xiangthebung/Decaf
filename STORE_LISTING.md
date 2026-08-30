@@ -48,6 +48,21 @@ Decaf is free, has no accounts, and makes no network requests of its own. Your s
 
 Note for the reviewer, if asked: Decaf runs at `document_start` so that the feed is gone before it paints. A script that waited for `DOMContentLoaded` would show the feed first and then remove it, which is worse than not running.
 
+## Published policy URLs
+
+Paste these into the Developer Dashboard. They are live now — check them before
+you submit rather than after, because a reviewer following a dead privacy link is
+a rejection, and this collection has already shipped one extension whose in-product
+legal links pointed at a host that did not exist.
+
+```
+Privacy policy   https://personal-website.xiangli3625.workers.dev/legal/decaf/privacy
+```
+
+The copy in this repository is the original. The portfolio site keeps a vendored
+copy and its test suite diffs the two, so edit the file here and re-copy — never
+the published page on its own.
+
 ## Privacy disclosures for the Developer Dashboard
 
 Decaf does not collect or transmit user data. It makes no network requests, contains no analytics, no remote code and no third-party services. The only data it stores is the settings above, in `chrome.storage`, on the user's own device.
